@@ -59,9 +59,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.sshj)
-    implementation(libs.bcprov)
-    implementation(libs.bcpkix)
+    implementation (libs.sshj)
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.82")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

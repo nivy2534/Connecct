@@ -5,13 +5,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.dp
@@ -31,83 +36,87 @@ import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.Security
 import kotlin.coroutines.CoroutineContext
+import com.example.connecct.Conn.*
 
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            SSH()
+            ConnectScreen()
         }
     }
 }
 
 @Composable
-fun SSH() {
+fun ConnectScreen(){
     var host by remember { mutableStateOf("") }
-    var uname by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf("idle") }
-    var scope = rememberCoroutineScope()
-    val ssh = SSHClient()
+    var username by remember { mutableStateOf("") }
+    var privateKey by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("Idle") }
+    var isConnecting by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ){
-        OutlinedTextField(
-            value = host,
-            onValueChange = { host = it },
-            label = { Text("Host IP")}
-        )
+    val scope = rememberCoroutineScope()
+    val connection = remember { Connection() }
 
-        OutlinedTextField(
-            value = uname,
-            onValueChange = {uname = it},
-            label = { Text("PC Username")}
-        )
+    Surface(modifier = Modifier.fillMaxSize()){
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ){
+            OutlinedTextField(
+                value = host,
+                onValueChange = { host=it },
+                label = { Text("Host") },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        Button(onClick = {
-            scope.launch(Dispatchers.IO){
-                try{
-                    status = "Connecting..."
-                    val ssh = SSHClient()
-                    ssh.addHostKeyVerifier(PromiscuousVerifier())
-                    ssh.connect(host)
-                    val keyProvider = ssh.loadKeys("/storage/emulated/0/ssh/id_rsa")
-                    ssh.authPublickey(uname, keyProvider)
-                    status = "Connected!"
-                    ssh.disconnect()
-                }catch (e: Exception){
-                    status = "Error: ${e.message}"
-                }
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedTextField(
+                  value = username,
+                  onValueChange = { username = it },
+                  label = {Text("Username")},
+                  modifier = Modifier.fillMaxWidth()
+              )
+
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = privateKey,
+                onValueChange = { privateKey = it },
+                label = {Text("Private Key")},
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    scope.launch {
+                        isConnecting = true
+                        status = "Connecting..."
+                        try{
+                            connection.connect(host, username, privateKey)
+                        }catch(e: Exception){
+                            status = "Failed to connect : ${e.message}"
+                        }finally{
+                            isConnecting = false
+                        }
+                    }
+                },
+                enabled = !isConnecting,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isConnecting) "Connecting..." else "Connect")
             }
-        }){
-            Text("Connect")
+
+            Spacer(Modifier.height(16.dp))
+            Text( text = "Status: $status")
         }
-
-        Text("Status: $status")
     }
-}
 
-fun generateSSHKey(privateKeyPath: String, publicKeyPath: String){
-    Security.addProvider(BouncyCastleProvider())
-
-    val keygen = KeyPairGenerator.getInstance("RSA", "BC")
-    keygen.initialize(4096)
-    val pair: KeyPair = keygen.generateKeyPair()
-
-    val privateKeyFile = File(privateKeyPath)
-    privateKeyFile.writeBytes(pair.private.encoded)
-
-    val publicKeyFile = File(publicKeyPath)
-    publicKeyFile.writeBytes(pair.public.encoded)
-
-}
-
-fun savePrivateKeyOpenSSH(keyPair: KeyPair, path: String){
-    val writer = JcaPEMWriter(FileWriter(path))
-    writer.writeObject(keyPair.private)
-    writer.close()
 }
