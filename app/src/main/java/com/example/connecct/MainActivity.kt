@@ -1,11 +1,9 @@
 package com.example.connecct
 
-import android.content.Context
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+<<<<<<< HEAD
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -33,15 +31,36 @@ import net.schmizz.sshj.userauth.UserAuthException
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
 
+=======
+import androidx.activity.viewModels
+import com.example.connecct.navigation.NavGraph
+import com.example.connecct.ui.theme.ConnectTheme
+import com.example.connecct.ui.viewmodel.ConnectionViewModel
+import com.example.connecct.viewmodel.ThemeViewModel
+>>>>>>> 517e3a34416d12cba68ae0f257b87caa8fe9d555
 
 class MainActivity : ComponentActivity() {
+
+    // ViewModel untuk tema (gelap/terang)
+    private val themeViewModel: ThemeViewModel by viewModels()
+
+    // ViewModel untuk koneksi SSH
+    private val connectionViewModel: ConnectionViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ConnectScreen()
+            ConnectTheme(darkTheme = themeViewModel.isDarkMode) {
+                // Navigasi utama aplikasi
+                NavGraph(
+                    themeViewModel = themeViewModel,
+                    connectionViewModel = connectionViewModel // ✅ diteruskan ke layar Connect
+                )
+            }
         }
     }
 }
+<<<<<<< HEAD
 
 @Composable
 fun ConnectScreen(){
@@ -211,3 +230,5 @@ fun getFileMetadata(context: Context, uri: Uri): Pair<String, String>{
     val sizeInKB = String.format("%.2f KB", sizeByBytes / 1024.0)
     return name to sizeInKB
 }
+=======
+>>>>>>> 517e3a34416d12cba68ae0f257b87caa8fe9d555
