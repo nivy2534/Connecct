@@ -9,7 +9,7 @@ lifecycleRuntimeKtx = "2.9.4"
 activityCompose = "1.11.0"
 composeBom = "2024.09.00"
 bouncycastle = "1.82"
-sshj = "0.39.0"
+sshj = "0.40.0"
 documentfile = "1.1.0"
 
 [libraries]

@@ -7,11 +7,15 @@ import java.security.Security
 class App : Application() {
     override fun onCreate(){
         super.onCreate()
-
-        val existingProvider = Security.getProvider(BouncyCastleProvider.PROVIDER_NAME)
-        if(existingProvider == null || existingProvider.javaClass != BouncyCastleProvider::class.java){
-            Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME)
-            Security.addProvider(BouncyCastleProvider())
+        try {
+            val oldProvider = Security.getProvider(BouncyCastleProvider.PROVIDER_NAME)
+            if (oldProvider != null) {
+                Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME)
+            }
+            Security.insertProviderAt(BouncyCastleProvider(), 1)
+            println("✅ BouncyCastle aktif sejak startup")
+        } catch (e: Exception) {
+            println("❌ Gagal register BC: ${e.message}")
         }
 
     }

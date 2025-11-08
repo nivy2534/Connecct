@@ -16,14 +16,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
@@ -31,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.example.connecct.Conn.*
 import kotlinx.coroutines.withContext
+import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.userauth.UserAuthException
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
@@ -60,6 +58,8 @@ fun ConnectScreen(){
 
     var filename by remember {mutableStateOf("")}
     var filesize by remember {mutableStateOf("")}
+
+    var providers by remember {mutableStateOf("")}
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -101,6 +101,7 @@ fun ConnectScreen(){
 
             Spacer(Modifier.height(8.dp))
 
+            //passphrase
             OutlinedTextField(
                 value = passphrase,
                 onValueChange = { passphrase = it },
@@ -120,11 +121,32 @@ fun ConnectScreen(){
                 Text("Pilih Private Key")
             }
 
-            if(privateKey.isNotEmpty()){
-                Column(modifier = Modifier.padding(top = 8.dp)){
+            if (privateKey.isNotEmpty()) {
+                Column(modifier = Modifier.padding(top = 8.dp)) {
                     Text("URI: $privateKey")
                     Text("Filename : $filename")
                     Text("Filesize : $filesize")
+
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            val uri = Uri.parse(privateKey)
+                            try{
+                                val inputStream = context.contentResolver.openInputStream(uri)
+                                val keyContent = inputStream?.bufferedReader().use { it?.readText() } ?:""
+                                status = if(keyContent.isNotEmpty()){
+                                    "Isi private key: \n" + keyContent.take(200) + "..."
+                                }else{
+                                    "File kosong"
+                                }
+                            }catch (e: Exception){
+                                status = "Gagal membaca file: ${e::class.simpleName} - ${e.message}"
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Periksa Private Key")
+                    }
                 }
             }
 
@@ -136,15 +158,13 @@ fun ConnectScreen(){
                         isConnecting = true
                         status = "Connecting..."
                         try{
-                            if(Security.getProvider("BC") == null){
-                                Security.addProvider(BouncyCastleProvider())
-                            }
                             withContext(Dispatchers.IO){
                                 connection.connect(
                                     context = context,
                                     host = host,
                                     username = username,
-                                    privateKeyPath = privateKey
+                                    privateKeyPath = privateKey,
+                                    passphrase = passphrase,
                                 )
                             }
                         }catch (e: java.io.FileNotFoundException){
@@ -159,6 +179,7 @@ fun ConnectScreen(){
                             status = "Error: Authentication failed - ${e::class.simpleName} - ${e.message}"
                         }catch(e: Exception){
                             status = "Failed to connect : ${e::class.simpleName} - ${e.message}"
+                            //status = providers
                             e.printStackTrace()
                         }finally{
                             isConnecting = false
