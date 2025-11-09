@@ -9,22 +9,45 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.connecct.ui.components.KeyCard
 import com.example.connecct.ui.viewmodel.KeysViewModel
-import com.example.connecct.ui.viewmodel.SSHKey
-
+import com.example.connecct.Conn.generateKey
+import com.example.connecct.storage.loadStorageKey
+import com.example.connecct.ui.viewmodel.SSHKeys
+import java.io.File
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KeysScreen(viewModel: KeysViewModel = viewModel()) {
     val keys by remember { derivedStateOf { viewModel.keys } }
 
+    var selectedKey by remember { mutableStateOf<SSHKeys?>(null) }
+    var showDialog by remember {mutableStateOf(false)}
+
+    val context = LocalContext.current
+
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { viewModel.addKey("My Key ${keys.size + 1}", if (keys.size % 2 == 0) "RSA" else "ED25519") },
+                onClick = {
+                    val keyName = "id_rsa_${keys.size + 1}"
+                    val outputDir = File("/data/data/com.example.connecct/files") // lokasi internal app
+                    val (privateFile, publicFile) = generateKey.generateKeyPair(
+                        keyname = keyName,
+                        outputDir = outputDir
+                    )
+
+                    // tambahkan ke ViewModel (menyimpan info key)
+                    viewModel.addKey(
+                        keyName,
+                        "RSA",
+                        privateFile.absolutePath,
+                        publicFile.absolutePath
+                    )
+                },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
                 Icon(Icons.Outlined.Add, contentDescription = "Add Key")
@@ -50,8 +73,49 @@ fun KeysScreen(viewModel: KeysViewModel = viewModel()) {
                         .padding(16.dp)
                 ) {
                     items(keys) { key ->
-                        KeyCard(key = key, onDelete = { viewModel.deleteKey(it) })
+                        KeyCard(
+                            key = key,
+                            onDelete = { viewModel.deleteKey(it) },
+                            onClick = {
+                                selectedKey = key
+                                showDialog = true
+                            }
+                        )
                     }
+                }
+            }
+
+            if (showDialog && selectedKey != null) {
+                selectedKey?.let { key ->
+                    val keyContent = remember(key) {
+                        loadStorageKey(context).readPublicKeyContent(key.publicFile)
+                    }
+
+                    AlertDialog(
+                        onDismissRequest = { showDialog = false },
+                        confirmButton = {
+                            TextButton(onClick = { showDialog = false }) {
+                                Text("Close")
+                            }
+                        },
+                        title = { Text("Key Details", fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("Name: ${key.name}")
+                                Text("Type: ${key.type}")
+                                Text("Added At: ${key.addedAt}")
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Divider()
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("🔑 Public Key:")
+                                Text(
+                                    keyContent,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    )
                 }
             }
         }

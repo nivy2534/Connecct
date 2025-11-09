@@ -3,20 +3,25 @@ package com.example.connecct.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.connecct.components.BottomNavBar
 import com.example.connecct.ui.screen.*
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
+import com.example.connecct.ui.viewmodel.KeysViewModel
 import com.example.connecct.viewmodel.ThemeViewModel
 
 @Composable
 fun NavGraph(
     themeViewModel: ThemeViewModel,
-    connectionViewModel: ConnectionViewModel
+    connectionViewModel: ConnectionViewModel,
 ) {
     val navController = rememberNavController()
+
+    // ✅ Buat KeysViewModel sekali, agar tetap hidup saat berpindah tab
+    val keysViewModel: KeysViewModel = viewModel()
 
     Scaffold(
         bottomBar = { BottomNavBar(navController) }
@@ -26,9 +31,13 @@ fun NavGraph(
             startDestination = "connect",
             modifier = androidx.compose.ui.Modifier.padding(paddingValues)
         ) {
-            // ✅ kirim ViewModel koneksi ke layar Connect
+            // Halaman utama koneksi SSH
             composable("connect") { ConnectScreen(viewModel = connectionViewModel) }
-            composable("keys") { KeysScreen() }
+
+            // ✅ Halaman Keys dengan ViewModel tetap
+            composable("keys") { KeysScreen(viewModel = keysViewModel) }
+
+            // Halaman history & settings
             composable("history") { HistoryScreen() }
             composable("settings") { SettingsScreen(themeViewModel) }
         }
