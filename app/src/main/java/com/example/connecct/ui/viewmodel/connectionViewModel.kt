@@ -91,6 +91,7 @@ class ConnectionViewModel : ViewModel() {
                         context = context, // ✅ kirim dari UI
                         host = currentState.host,
                         username = currentState.username,
+                        passphrase = currentState.passphrase,
                         privateKeyPath = currentState.privateKeyPath
                     )
                 }

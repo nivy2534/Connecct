@@ -9,17 +9,18 @@ import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.Security
 import android.util.*
+import kotlin.Pair
 
 object generateKey {
-    fun generateKey(
+    fun generateKeyPair(
         keyname: String = "id_rsa_*",
         outputDir: File = File("."),
         passphrase: String? = null
     ):Pair<File, File>{
         Security.addProvider(BouncyCastleProvider())
 
-        val keygen = KeyPairGenerator.getInstance("RSA", "BC")
-        keygen.initialize(2048)
+        val keygen = KeyPairGenerator.getInstance("RSA")
+        keygen.initialize(2048, java.security.SecureRandom())
         val keyPair: KeyPair = keygen.generateKeyPair()
 
         val privateKey = File(outputDir, keyname)
@@ -43,6 +44,6 @@ object generateKey {
 
         publicKey.writeText(publicKeyOpenSSH)
 
-        return Pair(privateKey, publicKey)
+        return kotlin.Pair(privateKey, publicKey)
     }
 }
