@@ -1,8 +1,12 @@
 package com.example.connecct
 
 import android.app.Application
+import com.example.connecct.storage.loadStorageKey
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class App : Application() {
     override fun onCreate(){
@@ -18,5 +22,9 @@ class App : Application() {
             println("❌ Gagal register BC: ${e.message}")
         }
 
+        CoroutineScope(Dispatchers.IO).launch{
+            val loader = loadStorageKey(applicationContext)
+            val keys = loader.loadKeys()
+        }
     }
-},
+}
