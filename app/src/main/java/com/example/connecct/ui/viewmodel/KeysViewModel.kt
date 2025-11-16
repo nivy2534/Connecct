@@ -5,7 +5,10 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.connecct.storage.loadStorageKey
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class KeysViewModel : ViewModel() {
     private val _keys = mutableStateListOf<SSHKeys>()
@@ -22,7 +25,18 @@ class KeysViewModel : ViewModel() {
         _keys.add(newKey)
     }
 
-    fun deleteKey(key: SSHKeys) {
+    fun deleteKey(context: Context, key: SSHKeys) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { File(key.privateFile).delete() }
+                runCatching {
+                    if(key.publicFile.isNotBlank()){
+                        File(key.publicFile).delete()
+                    }
+                }
+            }
+        }
+
         _keys.remove(key)
     }
 
