@@ -27,7 +27,7 @@ fun NavGraph(
             modifier = androidx.compose.ui.Modifier.padding(paddingValues)
         ) {
             // ✅ kirim ViewModel koneksi ke layar Connect
-            composable("connect") { ConnectScreen(viewModel = connectionViewModel) }
+            composable("connect") { ConnectScreen(viewModel = connectionViewModel, navController = navController) }
             composable("keys") { KeysScreen() }
             composable("history") { HistoryScreen() }
             composable("settings") { SettingsScreen(themeViewModel) }

@@ -36,4 +36,7 @@ sealed class ConnectionUiEvent {
     data class OnPrivateKeySelected(val path: String, val filename: String, val filesize: String) : ConnectionUiEvent()
     object OnConnectClicked : ConnectionUiEvent()
     object OnResetClicked : ConnectionUiEvent()
+
+    // ✅ Tambahan baru untuk navigasi ke KeysScreen
+    object OnChooseKeyClicked : ConnectionUiEvent()
 }

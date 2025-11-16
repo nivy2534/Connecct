@@ -1,18 +1,30 @@
 package com.example.connecct
 
 import android.app.Application
+import com.example.connecct.storage.loadStorageKey
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class App : Application() {
     override fun onCreate(){
         super.onCreate()
-
-        val existingProvider = Security.getProvider(BouncyCastleProvider.PROVIDER_NAME)
-        if(existingProvider == null || existingProvider.javaClass != BouncyCastleProvider::class.java){
-            Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME)
-            Security.addProvider(BouncyCastleProvider())
+        try {
+            val oldProvider = Security.getProvider(BouncyCastleProvider.PROVIDER_NAME)
+            if (oldProvider != null) {
+                Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME)
+            }
+            Security.insertProviderAt(BouncyCastleProvider(), 1)
+            println("✅ BouncyCastle aktif sejak startup")
+        } catch (e: Exception) {
+            println("❌ Gagal register BC: ${e.message}")
         }
 
+        CoroutineScope(Dispatchers.IO).launch{
+            val loader = loadStorageKey(applicationContext)
+            val keys = loader.loadKeys()
+        }
     }
 }

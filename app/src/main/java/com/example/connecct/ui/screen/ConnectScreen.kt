@@ -23,13 +23,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import androidx.navigation.NavController
 import com.example.connecct.ui.state.ConnectionStatus
-import com.example.connecct.ui.state.ConnectionUiEvent
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
+import com.example.connecct.ui.state.ConnectionUiEvent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConnectScreen(viewModel: ConnectionViewModel) {
+fun ConnectScreen(
+    viewModel: ConnectionViewModel,
+    navController: NavController
+) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -130,7 +134,7 @@ fun ConnectScreen(viewModel: ConnectionViewModel) {
 
                 // Private Key Button
                 Button(
-                    onClick = { filePicker.launch("*/*") },
+                    onClick = { navController.navigate("keys") },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !uiState.isConnecting,
                     shape = RoundedCornerShape(10.dp)

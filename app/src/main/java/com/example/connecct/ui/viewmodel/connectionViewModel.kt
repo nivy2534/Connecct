@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.connecct.Conn.Connection
 import com.example.connecct.ui.state.ConnectionStatus
-import com.example.connecct.ui.state.ConnectionUiEvent
 import com.example.connecct.ui.state.UiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
+import com.example.connecct.ui.state.ConnectionUiEvent
 
 class ConnectionViewModel : ViewModel() {
 
