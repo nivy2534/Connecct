@@ -19,19 +19,28 @@ import androidx.compose.ui.text.AnnotatedString
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import android.content.ClipData
+import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import com.example.connecct.ui.components.KeyCard
 import com.example.connecct.ui.viewmodel.KeysViewModel
 import com.example.connecct.Conn.generateKey
 import com.example.connecct.storage.loadStorageKey
+import com.example.connecct.ui.state.ConnectionUiEvent
 import com.example.connecct.ui.viewmodel.SSHKeys
 import java.io.File
+import com.example.connecct.ui.viewmodel.ConnectionViewModel
 
 enum class AddKeyMode { GENERATE, IMPORT}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun KeysScreen(viewModel: KeysViewModel = viewModel()) {
+fun KeysScreen(
+    viewModel: KeysViewModel = viewModel(),
+    connectionViewModel: ConnectionViewModel,
+    navController: NavController,
+    selectionMode: Boolean
+    ) {
     val keys by remember { derivedStateOf { viewModel.keys } }
 
     var selectedKey by remember { mutableStateOf<SSHKeys?>(null) }
@@ -83,8 +92,24 @@ fun KeysScreen(viewModel: KeysViewModel = viewModel()) {
                                 viewModel.deleteKey(context, keyToDelete)
                             },
                             onClick = {
-                                selectedKey = key
-                                showDialog = true
+                                if(selectionMode){
+                                    val privateFile = File(key.privateFile)
+                                    val sizeInKB = String.format("%.2f KB", privateFile.length() / 1024.0)
+
+                                    val fileUri = Uri.fromFile(privateFile)
+                                    connectionViewModel.onEvent(
+                                        ConnectionUiEvent.OnPrivateKeySelected(
+                                            fileUri.toString(),
+                                            key.name,
+                                            sizeInKB
+                                        )
+                                    )
+
+                                    navController.popBackStack()
+                                }else{
+                                    selectedKey = key
+                                    showDialog = true
+                                }
                             }
                         )
                     }

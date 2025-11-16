@@ -134,7 +134,7 @@ fun ConnectScreen(
 
                 // Private Key Button
                 Button(
-                    onClick = { navController.navigate("keys") },
+                    onClick = { navController.navigate("keys_select") },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !uiState.isConnecting,
                     shape = RoundedCornerShape(10.dp)

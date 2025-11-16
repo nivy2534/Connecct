@@ -33,7 +33,22 @@ fun NavGraph(
         ) {
             // ✅ kirim ViewModel koneksi ke layar Connect
             composable("connect") { ConnectScreen(viewModel = connectionViewModel, navController = navController) }
-            composable("keys") { KeysScreen() }
+            composable("keys") {
+                KeysScreen(
+                    viewModel = keysViewModel,
+                    connectionViewModel = connectionViewModel,
+                    navController = navController,
+                    selectionMode = false
+                )
+            }
+            composable("keys_select"){
+                KeysScreen(
+                    viewModel = keysViewModel,
+                    connectionViewModel = connectionViewModel,
+                    navController = navController,
+                    selectionMode = true
+                )
+            }
             composable("history") { HistoryScreen() }
             composable("settings") { SettingsScreen(themeViewModel) }
         }
