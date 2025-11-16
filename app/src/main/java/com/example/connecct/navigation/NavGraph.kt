@@ -16,7 +16,7 @@ import com.example.connecct.viewmodel.ThemeViewModel
 @Composable
 fun NavGraph(
     themeViewModel: ThemeViewModel,
-    connectionViewModel: ConnectionViewModel,
+    connectionViewModel: ConnectionViewModel
 ) {
     val navController = rememberNavController()
 
@@ -31,13 +31,9 @@ fun NavGraph(
             startDestination = "connect",
             modifier = androidx.compose.ui.Modifier.padding(paddingValues)
         ) {
-            // Halaman utama koneksi SSH
-            composable("connect") { ConnectScreen(viewModel = connectionViewModel) }
-
-            // ✅ Halaman Keys dengan ViewModel tetap
-            composable("keys") { KeysScreen(viewModel = keysViewModel) }
-
-            // Halaman history & settings
+            // ✅ kirim ViewModel koneksi ke layar Connect
+            composable("connect") { ConnectScreen(viewModel = connectionViewModel, navController = navController) }
+            composable("keys") { KeysScreen() }
             composable("history") { HistoryScreen() }
             composable("settings") { SettingsScreen(themeViewModel) }
         }
