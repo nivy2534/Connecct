@@ -18,6 +18,9 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import com.example.connecct.ui.state.ConnectionUiEvent
+import com.example.connecct.ui.viewmodel.ConnectionViewModel
 import com.example.connecct.viewmodel.ThemeViewModel
 import com.example.connecct.ui.viewmodel.KeysViewModel
 import com.example.connecct.ui.viewmodel.SSHKeys
@@ -25,7 +28,9 @@ import com.example.connecct.ui.viewmodel.SSHKeys
 @Composable
 fun SettingsScreen(
     themeViewModel: ThemeViewModel,
-    keyViewModel: KeysViewModel
+    keyViewModel: KeysViewModel,
+    connectionViewModel: ConnectionViewModel,
+    navController: NavHostController
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -79,7 +84,17 @@ fun SettingsScreen(
             // -------------------------------------------------------------
             else {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable{
+                            connectionViewModel.onEvent(
+                                ConnectionUiEvent.OnPrivateKeySelected(
+                                    path = key.privateFile,
+                                    filename = key.name
+                                )
+                            )
+                            navController.popBackStack()
+                        },
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )

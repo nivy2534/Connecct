@@ -33,7 +33,7 @@ sealed class ConnectionUiEvent {
     data class OnHostChanged(val host: String) : ConnectionUiEvent()
     data class OnUsernameChanged(val username: String) : ConnectionUiEvent()
     data class OnPassphraseChanged(val passphrase: String) : ConnectionUiEvent()
-    data class OnPrivateKeySelected(val path: String, val filename: String, val filesize: String) : ConnectionUiEvent()
+    data class OnPrivateKeySelected(val path: String, val filename: String) : ConnectionUiEvent()
     object OnConnectClicked : ConnectionUiEvent()
     object OnResetClicked : ConnectionUiEvent()
 

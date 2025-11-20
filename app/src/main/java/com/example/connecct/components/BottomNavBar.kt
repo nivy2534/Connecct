@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Lan
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,6 +23,7 @@ data class BottomNavItem(
 fun BottomNavBar(navController: NavController) {
     val items = listOf(
         BottomNavItem("Connect", "connect", Icons.Filled.Lan),
+        BottomNavItem("Connect Beta", "connect_beta", Icons.Default.Science),
         BottomNavItem("Devices", "devices", Icons.Filled.Devices),
         BottomNavItem("History", "history", Icons.Filled.History),
         BottomNavItem("Settings", "settings", Icons.Filled.Settings),
