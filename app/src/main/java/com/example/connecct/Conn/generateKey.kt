@@ -46,7 +46,7 @@ object generateKey {
                     val encryptor = JceOpenSSLPKCS8EncryptorBuilder(PKCS8Generator.AES_256_CBC)
                         .setRandom(SecureRandom())
                         .setPassword(passphrase.toCharArray())
-                        .build()
+                           .build()
 
                     JcaPKCS8Generator(keyPair.private, encryptor)
                 } else {
