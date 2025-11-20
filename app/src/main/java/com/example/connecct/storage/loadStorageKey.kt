@@ -13,7 +13,7 @@ import javax.crypto.spec.SecretKeySpec
 class LoadStorageKey(private val context: Context) {
 
     // ----------------------------------------------------------
-    // LOAD STORED KEYS
+    // LOAD STORED KEYS (read content too)
     // ----------------------------------------------------------
     suspend fun loadKeys(): List<SSHKeys> {
         val dir = File(context.filesDir, "ssh_keys")
@@ -27,32 +27,33 @@ class LoadStorageKey(private val context: Context) {
 
         return dir.listFiles()?.mapNotNull { file ->
             if (file.extension == "pub") {
+
                 val privateFile = File(dir, file.nameWithoutExtension)
+
+                val pubText = runCatching { file.readText() }.getOrElse { "" }
+                val privText = runCatching { privateFile.readText() }.getOrElse { "" }
 
                 SSHKeys(
                     name = file.nameWithoutExtension,
                     type = "RSA",
                     privateFile = privateFile.absolutePath,
                     publicFile = file.absolutePath,
-                    addedAt = file.lastModified().toString()
+                    addedAt = file.lastModified().toString(),
+                    privateKeyContent = privText,
+                    publicKeyContent = pubText
                 )
             } else null
         } ?: emptyList()
     }
 
     // ----------------------------------------------------------
-    // AUTO GENERATE SSH KEY
-    // ----------------------------------------------------------
     fun generateAutoKey(): SSHKeys? = generateAndStoreKey(null)
 
-    // ----------------------------------------------------------
-    // MANUAL (WITH PASSPHRASE)
-    // ----------------------------------------------------------
     fun generateManualKey(passphrase: String): SSHKeys? =
         generateAndStoreKey(passphrase)
 
     // ----------------------------------------------------------
-    // CORE GENERATOR + SAVE
+    // Generate + return content
     // ----------------------------------------------------------
     private fun generateAndStoreKey(passphrase: String?): SSHKeys? {
         return try {
@@ -64,7 +65,7 @@ class LoadStorageKey(private val context: Context) {
             val privateKeyFile = File(dir, keyName)
             val publicKeyFile = File(dir, "$keyName.pub")
 
-            // --- GENERATE RSA KEYPAIR 2048 ---
+            // --- RSA KEYPAIR ---
             val keyPairGenerator = java.security.KeyPairGenerator.getInstance("RSA")
             keyPairGenerator.initialize(2048)
             val keyPair: KeyPair = keyPairGenerator.genKeyPair()
@@ -85,12 +86,18 @@ class LoadStorageKey(private val context: Context) {
 
             publicKeyFile.writeText("$pubSsh $keyName")
 
-            return SSHKeys(
+            // ---- read content for UI ----
+            val privateContent = privateKeyFile.readText()
+            val publicContent = publicKeyFile.readText()
+
+            SSHKeys(
                 name = keyName,
                 type = "RSA",
                 privateFile = privateKeyFile.absolutePath,
                 publicFile = publicKeyFile.absolutePath,
-                addedAt = System.currentTimeMillis().toString()
+                addedAt = System.currentTimeMillis().toString(),
+                privateKeyContent = privateContent,
+                publicKeyContent = publicContent
             )
 
         } catch (e: Exception) {
@@ -100,16 +107,12 @@ class LoadStorageKey(private val context: Context) {
     }
 
     // ----------------------------------------------------------
-    // DELETE ALL KEYS (PRIVATE + PUBLIC)
-    // ----------------------------------------------------------
     fun deleteKeys() {
         try {
             val dir = File(context.filesDir, "ssh_keys")
             if (!dir.exists()) return
 
-            dir.listFiles()?.forEach { file ->
-                file.delete()
-            }
+            dir.listFiles()?.forEach { it.delete() }
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -117,7 +120,7 @@ class LoadStorageKey(private val context: Context) {
     }
 
     // ----------------------------------------------------------
-    // AES ENCRYPTION FOR PRIVATE KEY
+    // AES ENCRYPTION
     // ----------------------------------------------------------
     private fun encryptPrivateKey(bytes: ByteArray, passphrase: String): ByteArray {
         val key = MessageDigest.getInstance("SHA-256").digest(passphrase.toByteArray())
@@ -129,12 +132,9 @@ class LoadStorageKey(private val context: Context) {
         return cipher.doFinal(bytes)
     }
 
-    // ----------------------------------------------------------
+    // Optional
     fun readPublicKeyContent(path: String): String {
-        return try {
-            File(path).readText()
-        } catch (e: Exception) {
-            "Error reading public key: ${e.message}"
-        }
+        return try { File(path).readText() }
+        catch (e: Exception) { "Error reading public key: ${e.message}" }
     }
 }

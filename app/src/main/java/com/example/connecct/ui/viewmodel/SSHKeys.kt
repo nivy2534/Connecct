@@ -5,5 +5,7 @@ data class SSHKeys(
     val type: String,
     val privateFile: String,
     val publicFile: String,
-    val addedAt: String
+    val addedAt: String,
+    val privateKeyContent: String,
+    val publicKeyContent: String
 )
