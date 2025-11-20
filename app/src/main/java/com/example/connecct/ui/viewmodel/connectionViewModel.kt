@@ -114,6 +114,40 @@ class ConnectionViewModel : ViewModel() {
         }
     }
 
+    fun handleQrConnection(context: Context, qrData: String) {
+        try {
+            // Format QR misalnya: ssh://username:pass@host:22?key=id_rsa
+            // Atau format custom seperti: host|username|passphrase
+            val parts = qrData.split("|")
+
+            if (parts.size < 3) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "Format QR tidak valid"
+                )
+                return
+            }
+
+            val host = parts[0]
+            val username = parts[1]
+            val passphrase = parts[2]
+
+            // memperbarui uiState
+            _uiState.value = _uiState.value.copy(
+                host = host,
+                username = username,
+                passphrase = passphrase
+            )
+
+            // otomatis konek
+            connectToServer(context)
+
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(
+                errorMessage = "Gagal membaca QR: ${e.message}"
+            )
+        }
+    }
+
     private fun handleConnectionError(message: String, status: ConnectionStatus, exception: Exception) {
         _uiState.update {
             it.copy(
