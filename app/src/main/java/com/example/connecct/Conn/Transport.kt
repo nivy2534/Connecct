@@ -75,6 +75,8 @@ class Transport(private val connection: Connection){
         })
 
         scp.download(remotePath, localPath)
+
+        onProgress(1f)
     }
 
 }
