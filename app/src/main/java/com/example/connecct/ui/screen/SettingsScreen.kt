@@ -2,23 +2,25 @@ package com.example.connecct.ui.screen
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.example.connecct.viewmodel.ThemeViewModel
-import com.example.connecct.ui.viewmodel.KeysViewModel  // jika pakai ViewModel berbeda
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.ui.graphics.Color
+import com.example.connecct.ui.viewmodel.KeysViewModel
+import com.example.connecct.ui.viewmodel.SSHKeys
 
 @Composable
 fun SettingsScreen(
@@ -26,15 +28,24 @@ fun SettingsScreen(
     keyViewModel: KeysViewModel
 ) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
 
-    // 👇 STATE BARU UNTUK POPUP DIALOG
+    val key = keyViewModel.key        // ← key aktif
     var showGenerateDialog by remember { mutableStateOf(false) }
     var showManualDialog by remember { mutableStateOf(false) }
     var passphrase by remember { mutableStateOf("") }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var keyToDelete by remember { mutableStateOf<SSHKeys?>(null) }
+
+    // Load key dari storage
+    LaunchedEffect(Unit) {
+        keyViewModel.loadStoredKeys(context)
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.Top
     ) {
@@ -49,12 +60,71 @@ fun SettingsScreen(
             title = "KEYS",
             initiallyExpanded = true
         ) {
-            SettingItemClickable(
-                title = "Generate SSH Key",
-                subtitle = "Buat pasangan kunci baru untuk koneksi SSH",
-                icon = Icons.Default.VpnKey
-            ) {
-                showGenerateDialog = true    // 👈 buka dialog pilihan
+
+            // -------------------------------------------------------------
+            // 1. JIKA BELUM ADA KEY → Tampilkan tombol Generate
+            // -------------------------------------------------------------
+            if (key == null) {
+                SettingItemClickable(
+                    title = "Generate SSH Key",
+                    subtitle = "Buat pasangan kunci baru untuk koneksi SSH",
+                    icon = Icons.Default.VpnKey
+                ) {
+                    showGenerateDialog = true
+                }
+            }
+
+            // -------------------------------------------------------------
+            // 2. JIKA SUDAH ADA KEY → Tampilkan isi key
+            // -------------------------------------------------------------
+            else {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+
+                        Text("Public Key:", style = MaterialTheme.typography.titleMedium)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 80.dp, max = 200.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                text = key.publicKeyContent ?: "(Failed to load public key)",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                            OutlinedButton(onClick = {
+                                clipboard.setText(
+                                    AnnotatedString(key.publicKeyContent ?: "")
+                                )
+                            }) {
+                                Text("Copy Public Key")
+                            }
+
+                            OutlinedButton(
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color.Red
+                                ),
+                                onClick = {
+                                    keyToDelete = key
+                                    showDeleteDialog = true
+                                }
+                            ) {
+                                Text("Delete Key")
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -69,7 +139,7 @@ fun SettingsScreen(
     }
 
     // ------------------------------------------------------------
-    // 🔥 DIALOG 1 — PILIH AUTO ATAU MANUAL
+    // 3. DIALOG: PILIH AUTO / MANUAL
     // ------------------------------------------------------------
     if (showGenerateDialog) {
         AlertDialog(
@@ -79,24 +149,20 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showGenerateDialog = false
-                    keyViewModel.generateKeyAuto(context)   // 👈 Auto Generate
-                }) {
-                    Text("Auto Generate")
-                }
+                    keyViewModel.generateKeyAuto(context)
+                }) { Text("Auto Generate") }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showGenerateDialog = false
-                    showManualDialog = true                // 👈 lanjut ke dialog manual
-                }) {
-                    Text("Manual (Dengan Passphrase)")
-                }
+                    showManualDialog = true
+                }) { Text("Manual (Dengan Passphrase)") }
             }
         )
     }
 
     // ------------------------------------------------------------
-    // 🔥 DIALOG 2 — INPUT PASSPHRASE (MANUAL MODE)
+    // 4. DIALOG INPUT PASSPHRASE (MANUAL MODE)
     // ------------------------------------------------------------
     if (showManualDialog) {
         AlertDialog(
@@ -116,17 +182,47 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showManualDialog = false
-                    keyViewModel.generateKeyManual(context, passphrase) // 👈 Manual generate
+                    keyViewModel.generateKeyManual(context, passphrase)
                     passphrase = ""
-                }) {
-                    Text("Generate")
-                }
+                }) { Text("Generate") }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showManualDialog = false
                     passphrase = ""
-                }) {
+                }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showDeleteDialog && keyToDelete != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+                keyToDelete = null
+            },
+            title = { Text("Delete SSH Key") },
+            text = {
+                Text("Apakah Anda yakin ingin menghapus SSH key ini?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        keyViewModel.deleteKey(context)
+                        showDeleteDialog = false
+                        keyToDelete = null
+                    }
+                ) {
+                    Text("Delete", color = Color.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        keyToDelete = null
+                    }
+                ) {
                     Text("Cancel")
                 }
             }
@@ -149,9 +245,7 @@ fun SettingItemSwitch(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(14.dp))
             Text(title, style = MaterialTheme.typography.bodyLarge)
@@ -173,13 +267,10 @@ fun SettingItemClickable(
             .fillMaxWidth()
             .clickable { onClick() },
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = Color.Transparent
-        )
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Row(
-            modifier = Modifier
-                .padding(16.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -210,13 +301,11 @@ fun ExpandableSection(
             .fillMaxWidth()
             .padding(vertical = 4.dp)
     ) {
-
-        // Header (klik untuk expand/collapse)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { expanded = !expanded }
-                .padding(vertical = 8.dp), // NO background
+                .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -226,17 +315,17 @@ fun ExpandableSection(
             )
 
             Icon(
-                imageVector = if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                imageVector = if (expanded) Icons.Default.KeyboardArrowDown
+                else Icons.Default.KeyboardArrowRight,
                 contentDescription = null
             )
         }
 
-        // Body
         if (expanded) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp) // ONLY padding, no background
+                    .padding(start = 12.dp)
             ) {
                 content()
             }
