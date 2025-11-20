@@ -29,7 +29,7 @@ class ConnectionViewModel : ViewModel() {
             is ConnectionUiEvent.OnHostChanged -> updateHost(event.host)
             is ConnectionUiEvent.OnUsernameChanged -> updateUsername(event.username)
             is ConnectionUiEvent.OnPassphraseChanged -> updatePassphrase(event.passphrase)
-            is ConnectionUiEvent.OnPrivateKeySelected -> updatePrivateKey(event.path, event.filename, event.filesize)
+            is ConnectionUiEvent.OnPrivateKeySelected -> selectKeyFromSettings(event.path, event.filename)
             ConnectionUiEvent.OnResetClicked -> resetState()
             else -> {}
         }
@@ -47,12 +47,12 @@ class ConnectionViewModel : ViewModel() {
         _uiState.update { it.copy(passphrase = passphrase) }
     }
 
-    private fun updatePrivateKey(path: String, filename: String, filesize: String) {
+    // ⛔ HAPUS filesystem
+    private fun updatePrivateKey(path: String, filename: String) {
         _uiState.update {
             it.copy(
                 privateKeyPath = path,
                 filename = filename,
-                filesize = filesize,
                 isKeySelected = true
             )
         }
@@ -88,7 +88,7 @@ class ConnectionViewModel : ViewModel() {
 
                 withContext(Dispatchers.IO) {
                     connection.connect(
-                        context = context, // ✅ kirim dari UI
+                        context = context,
                         host = currentState.host,
                         username = currentState.username,
                         passphrase = currentState.passphrase,
@@ -117,8 +117,6 @@ class ConnectionViewModel : ViewModel() {
 
     fun handleQrConnection(context: Context, qrData: String) {
         try {
-            // Format QR misalnya: ssh://username:pass@host:22?key=id_rsa
-            // Atau format custom seperti: host|username|passphrase
             val parts = qrData.split("|")
 
             if (parts.size < 3) {
@@ -132,19 +130,28 @@ class ConnectionViewModel : ViewModel() {
             val username = parts[1]
             val passphrase = parts[2]
 
-            // memperbarui uiState
             _uiState.value = _uiState.value.copy(
                 host = host,
                 username = username,
                 passphrase = passphrase
             )
 
-            // otomatis konek
             connectToServer(context)
 
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(
                 errorMessage = "Gagal membaca QR: ${e.message}"
+            )
+        }
+    }
+
+    // ⛔ HAPUS filesystem
+    fun selectKeyFromSettings(path: String, filename: String) {
+        _uiState.update {
+            it.copy(
+                privateKeyPath = path,
+                filename = filename,
+                isKeySelected = true
             )
         }
     }

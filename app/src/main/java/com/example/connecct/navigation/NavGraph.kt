@@ -11,6 +11,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.connecct.components.BottomNavBar
 import com.example.connecct.ui.screen.ConnectScreen
+import com.example.connecct.ui.screen.ConnectBetaScreen
 import com.example.connecct.ui.screen.HistoryScreen
 import com.example.connecct.ui.screen.SettingsScreen
 import com.example.connecct.ui.viewmodel.DeviceViewModel
@@ -41,6 +42,14 @@ fun NavGraph(
                 )
             }
 
+            // CONNECT BETA SCREEN  ← BARU
+            composable("connect_beta") {
+                ConnectBetaScreen(
+                    viewModel = connectionViewModel,
+                    navController = navController
+                )
+            }
+
             // DEVICES SCREEN (pengganti keys)
             composable("devices") {
                 val deviceViewModel: DeviceViewModel = viewModel()
@@ -57,7 +66,9 @@ fun NavGraph(
                 val keyViewModel: KeysViewModel = viewModel()
                 SettingsScreen(
                     themeViewModel = themeViewModel,
-                    keyViewModel = keyViewModel
+                    keyViewModel = keyViewModel,
+                    connectionViewModel = connectionViewModel,
+                    navController = navController
                 )
             }
         }
