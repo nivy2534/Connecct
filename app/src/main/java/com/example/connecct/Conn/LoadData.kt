@@ -65,7 +65,7 @@ class LoadData(private val transport: Transport){
             uname.contains("Linux", ignoreCase = true) -> RemoteOS.LINUX
             uname.contains("Darwin", ignoreCase = true) -> RemoteOS.MAC
             uname.isNotEmpty() -> RemoteOS.LINUX
-            else {
+            else -> {
                 val ver = try{
                     transport.executeCommand("cat /etc/issue").trim()
                 }catch (e: Exception){
