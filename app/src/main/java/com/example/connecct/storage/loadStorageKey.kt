@@ -9,132 +9,74 @@ import java.security.KeyPair
 import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
+import com.example.connecct.Conn.generateKey
 
 class LoadStorageKey(private val context: Context) {
 
-    // ----------------------------------------------------------
-    // LOAD STORED KEYS (read content too)
-    // ----------------------------------------------------------
-    suspend fun loadKeys(): List<SSHKeys> {
-        val dir = File(context.filesDir, "ssh_keys")
-        Log.d("SSH_KEYS", "Dir: ${dir.absolutePath}, exists=${dir.exists()}")
+    private val keyDir: File
+        get() = File(context.filesDir, "ssh_keys").apply { mkdirs() }
 
-        if (!dir.exists()) return emptyList()
+    private val privFile get() = File(keyDir, "id_rsa")
+    private val pubFile  get() = File(keyDir, "id_rsa.pub")
 
-        dir.listFiles()?.forEach {
-            Log.d("SSH_KEYS", "Found file: ${it.name}")
-        }
+    fun loadKeys(): List<SSHKeys> {
+        if (!privFile.exists() || !pubFile.exists()) return emptyList()
 
-        return dir.listFiles()?.mapNotNull { file ->
-            if (file.extension == "pub") {
-
-                val privateFile = File(dir, file.nameWithoutExtension)
-
-                val pubText = runCatching { file.readText() }.getOrElse { "" }
-                val privText = runCatching { privateFile.readText() }.getOrElse { "" }
-
-                SSHKeys(
-                    name = file.nameWithoutExtension,
-                    type = "RSA",
-                    privateFile = privateFile.absolutePath,
-                    publicFile = file.absolutePath,
-                    addedAt = file.lastModified().toString(),
-                    privateKeyContent = privText,
-                    publicKeyContent = pubText
-                )
-            } else null
-        } ?: emptyList()
-    }
-
-    // ----------------------------------------------------------
-    fun generateAutoKey(): SSHKeys? = generateAndStoreKey(null)
-
-    fun generateManualKey(passphrase: String): SSHKeys? =
-        generateAndStoreKey(passphrase)
-
-    // ----------------------------------------------------------
-    // Generate + return content
-    // ----------------------------------------------------------
-    private fun generateAndStoreKey(passphrase: String?): SSHKeys? {
-        return try {
-            val dir = File(context.filesDir, "ssh_keys")
-            if (!dir.exists()) dir.mkdirs()
-
-            val keyName = "id_rsa_${System.currentTimeMillis()}"
-
-            val privateKeyFile = File(dir, keyName)
-            val publicKeyFile = File(dir, "$keyName.pub")
-
-            // --- RSA KEYPAIR ---
-            val keyPairGenerator = java.security.KeyPairGenerator.getInstance("RSA")
-            keyPairGenerator.initialize(2048)
-            val keyPair: KeyPair = keyPairGenerator.genKeyPair()
-
-            // --- PRIVATE KEY ---
-            var privateKeyBytes = keyPair.private.encoded
-
-            if (passphrase != null) {
-                privateKeyBytes = encryptPrivateKey(privateKeyBytes, passphrase)
-            }
-
-            privateKeyFile.writeBytes(privateKeyBytes)
-
-            // --- PUBLIC KEY (OpenSSH format) ---
-            val pubSsh = SshKeyUtils.convertPublicKeyToOpenSshFormat(
-                keyPair.public as java.security.interfaces.RSAPublicKey
-            )
-
-            publicKeyFile.writeText("$pubSsh $keyName")
-
-            // ---- read content for UI ----
-            val privateContent = privateKeyFile.readText()
-            val publicContent = publicKeyFile.readText()
-
+        val pubContent = pubFile.readText()
+        return listOf(
             SSHKeys(
-                name = keyName,
-                type = "RSA",
-                privateFile = privateKeyFile.absolutePath,
-                publicFile = publicKeyFile.absolutePath,
-                addedAt = System.currentTimeMillis().toString(),
-                privateKeyContent = privateContent,
-                publicKeyContent = publicContent
+                name = "id_rsa",
+                privateFile = privFile.absolutePath,
+                publicFile = pubFile.absolutePath,
+                publicKeyContent = pubContent,
+
             )
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+        )
     }
 
-    // ----------------------------------------------------------
+    /**
+     * getOrCreateAutoKey:
+     * - kalau file sudah ada → load & return
+     * - kalau belum ada     → generate baru (tanpa passphrase), lalu return
+     */
+    fun getOrCreateAutoKey(): SSHKeys? {
+        if (privFile.exists() && pubFile.exists()) {
+            return loadKeys().firstOrNull()
+        }
+
+        val (priv, pub) = generateKey.generateKeyPair(
+            keyname   = "id_rsa",
+            outputDir = keyDir,
+            passphrase = null
+        )
+
+        val pubContent = pub.readText()
+        return SSHKeys(
+            name = "id_rsa",
+            privateFile = priv.absolutePath,
+            publicFile = pub.absolutePath,
+            publicKeyContent = pubContent
+        )
+    }
+
+    fun generateManualKey(passphrase: String): SSHKeys? {
+        val (priv, pub) = generateKey.generateKeyPair(
+            keyname   = "id_rsa",
+            outputDir = keyDir,
+            passphrase = passphrase
+        )
+
+        val pubContent = pub.readText()
+        return SSHKeys(
+            name = "id_rsa",
+            privateFile = priv.absolutePath,
+            publicFile = pub.absolutePath,
+            publicKeyContent = pubContent
+        )
+    }
+
     fun deleteKeys() {
-        try {
-            val dir = File(context.filesDir, "ssh_keys")
-            if (!dir.exists()) return
-
-            dir.listFiles()?.forEach { it.delete() }
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    // ----------------------------------------------------------
-    // AES ENCRYPTION
-    // ----------------------------------------------------------
-    private fun encryptPrivateKey(bytes: ByteArray, passphrase: String): ByteArray {
-        val key = MessageDigest.getInstance("SHA-256").digest(passphrase.toByteArray())
-        val secretKey = SecretKeySpec(key, "AES")
-
-        val cipher = Cipher.getInstance("AES")
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-
-        return cipher.doFinal(bytes)
-    }
-
-    // Optional
-    fun readPublicKeyContent(path: String): String {
-        return try { File(path).readText() }
-        catch (e: Exception) { "Error reading public key: ${e.message}" }
+        privFile.delete()
+        pubFile.delete()
     }
 }

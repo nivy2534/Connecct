@@ -19,10 +19,7 @@ class KeysViewModel : ViewModel() {
     fun loadStoredKeys(context: Context) {
         viewModelScope.launch {
             val loader = LoadStorageKey(context)
-            val loadedKeys = loader.loadKeys()
-
-            // karena hanya 1 key, ambil index 0 kalau ada
-            _key.value = loadedKeys.firstOrNull()
+            _key.value = loader.loadKeys().firstOrNull()
         }
     }
 
@@ -32,14 +29,8 @@ class KeysViewModel : ViewModel() {
     fun generateKeyAuto(context: Context, onDone: (() -> Unit)? = null) {
         viewModelScope.launch {
             val loader = LoadStorageKey(context)
-
-            // generate & simpan
-            val newKey = loader.generateAutoKey()
-
-            if (newKey != null) {
-                _key.value = newKey  // replace key lama di UI
-            }
-
+            val newKey = loader.getOrCreateAutoKey()
+            if (newKey != null) _key.value = newKey
             onDone?.invoke()
         }
     }

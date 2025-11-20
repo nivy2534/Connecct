@@ -23,8 +23,8 @@ fun KeyCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(key.name, fontWeight = FontWeight.Bold)
-            Text("Type: ${key.type}")
-            Text("Added: ${key.addedAt}")
+            //Text("Type: ${key.type}")
+            //Text("Added: ${key.addedAt}")
             Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = { onDelete(key) },

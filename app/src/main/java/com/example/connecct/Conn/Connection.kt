@@ -26,68 +26,64 @@ class Connection {
     ) {
         disconnect()
 
-        val newSsh = SSHClient()
-        newSsh.addHostKeyVerifier(PromiscuousVerifier())
-        newSsh.connect(host)
+        val keyFile = File(privateKeyPath)
 
-        val keyUri = Uri.parse(privateKeyPath)
-        val tempKeyFile = File(context.cacheDir, "temp_id_key.pem")
+        if (!keyFile.exists()) {
+            Log.e("SSH_CONNECT", "Private key not found at: ${keyFile.absolutePath}")
+            throw java.io.FileNotFoundException("Private key not found at: ${keyFile.absolutePath}")
+        }
+
+        val newSsh = SSHClient().apply {
+            addHostKeyVerifier(PromiscuousVerifier())
+            connect(host)
+        }
 
         try {
-            Log.d("SSH_CONNECT", "Key URI: $keyUri")
+            Log.d("SSH_CONNECT", "Using key file: ${keyFile.absolutePath}")
+            Log.d(
+                "SSH_CONNECT",
+                "Passphrase used: ${if (passphrase.isBlank()) "(none)" else "(provided)"}"
+            )
 
-            // Copy private key dari URI ke file sementara
-            context.contentResolver.openInputStream(keyUri)?.use { input ->
-                val content = input.bufferedReader().use { it.readText() }
-                Log.d("SSH_CONNECT", "Private Key Content (Snippet): ${content.take(200)}...")
-                tempKeyFile.writeText(content)
-            }
+            val passwordFinder =
+                if (passphrase.isNotBlank()) {
+                    object : PasswordFinder {
+                        override fun reqPassword(resource: Resource<*>?): CharArray {
+                            return passphrase.toCharArray()
+                        }
 
-            Log.d("SSH_CONNECT", "Temp key file path: ${tempKeyFile.absolutePath}")
-            Log.d("SSH_CONNECT", "Passphrase used: ${if (passphrase.isBlank()) "(none)" else "(provided)"}")
-
-
-            // =======================================================
-            // SOLUSI STABIL: Menggunakan newSsh.loadKeys + PasswordFinder
-            // (Membutuhkan Private Key dalam format PEM/PKCS#1)
-            // =======================================================
-
-            val passwordFinder = if (passphrase.isNotBlank()) {
-                object : PasswordFinder {
-                    override fun reqPassword(resource: Resource<*>?): CharArray {
-                        return passphrase.toCharArray()
+                        override fun shouldRetry(resource: Resource<*>?): Boolean = false
                     }
-                    override fun shouldRetry(resource: Resource<*>?): Boolean {
-                        return false
-                    }
+                } else {
+                    null
                 }
-            } else {
-                null
-            }
 
-            // loadKeys adalah metode yang paling andal untuk file PEM
-            val keyProvider = newSsh.loadKeys(tempKeyFile.absolutePath, passwordFinder)
+            // Kalau key tanpa passphrase
+            val keyProvider: KeyProvider = if (passwordFinder == null) {
+                newSsh.loadKeys(keyFile.absolutePath)
+            } else {
+                newSsh.loadKeys(keyFile.absolutePath, passwordFinder)
+            }
 
             Log.d("SSH_CONNECT", "Key loaded successfully using loadKeys.")
 
-            // Authenticate
             newSsh.authPublickey(username, keyProvider)
 
             ssh = newSsh
         } catch (e: Exception) {
-            // Log error
-            Log.e("SSH_CONNECT", "Connection attempt failed: ${e::class.simpleName} - ${e.message}", e)
-
-            // Bersihkan koneksi
-            try { newSsh.disconnect() } catch (ignored: Exception) {}
-
-            // Lempar kembali error ke CoroutineScope
+            Log.e(
+                "SSH_CONNECT",
+                "Connection attempt failed: ${e::class.simpleName} - ${e.message}",
+                e
+            )
+            try {
+                newSsh.disconnect()
+            } catch (_: Exception) {
+            }
             throw e
-        } finally {
-            // Hapus file sementara
-            tempKeyFile.delete()
         }
     }
+
 
     // ... (isConnected dan disconnect tetap sama) ...
 
