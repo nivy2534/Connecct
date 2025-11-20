@@ -1,51 +1,77 @@
 package com.example.connecct.ui.viewmodel
 
 import android.content.Context
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.connecct.storage.loadStorageKey
-import kotlinx.coroutines.Dispatchers
+import com.example.connecct.storage.LoadStorageKey
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 
 class KeysViewModel : ViewModel() {
-    private val _keys = mutableStateListOf<SSHKeys>()
-    val keys: List<SSHKeys> get() = _keys
 
-    fun addKey(name: String, type: String, privateFile: String, publicFile: String) {
-        val newKey = SSHKeys(
-            name = name,
-            type = type,
-            privateFile = privateFile,
-            publicFile = publicFile,
-            addedAt = "Today"
-        )
-        _keys.add(newKey)
-    }
+    // 🔑 Hanya 1 key saja
+    private val _key = mutableStateOf<SSHKeys?>(null)
+    val key: SSHKeys? get() = _key.value
 
-    fun deleteKey(context: Context, key: SSHKeys) {
+    // ----------------------------------------------------------
+    // LOAD KEY dari penyimpanan
+    // ----------------------------------------------------------
+    fun loadStoredKeys(context: Context) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                runCatching { File(key.privateFile).delete() }
-                runCatching {
-                    if(key.publicFile.isNotBlank()){
-                        File(key.publicFile).delete()
-                    }
-                }
-            }
-        }
-
-        _keys.remove(key)
-    }
-
-    fun loadStoredKeys(context: Context){
-        viewModelScope.launch {
-            val loader = loadStorageKey(context)
+            val loader = LoadStorageKey(context)
             val loadedKeys = loader.loadKeys()
-            _keys.clear()
-            _keys.addAll(loadedKeys)
+
+            // karena hanya 1 key, ambil index 0 kalau ada
+            _key.value = loadedKeys.firstOrNull()
+        }
+    }
+
+    // ----------------------------------------------------------
+    // AUTO GENERATE (hapus yang lama & simpan baru)
+    // ----------------------------------------------------------
+    fun generateKeyAuto(context: Context, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            val loader = LoadStorageKey(context)
+
+            // generate & simpan
+            val newKey = loader.generateAutoKey()
+
+            if (newKey != null) {
+                _key.value = newKey  // replace key lama di UI
+            }
+
+            onDone?.invoke()
+        }
+    }
+
+    // ----------------------------------------------------------
+    // MANUAL GENERATE (pakai passphrase)
+    // ----------------------------------------------------------
+    fun generateKeyManual(context: Context, passphrase: String, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            val loader = LoadStorageKey(context)
+
+            val newKey = loader.generateManualKey(passphrase)
+
+            if (newKey != null) {
+                _key.value = newKey
+            }
+
+            onDone?.invoke()
+        }
+    }
+
+    // ----------------------------------------------------------
+    // DELETE KEY (dari UI + Storage)
+    // ----------------------------------------------------------
+    fun deleteKey(context: Context, onDone: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            val loader = LoadStorageKey(context)
+            loader.deleteKeys()
+
+            _key.value = null // bersihkan UI
+
+            onDone?.invoke()
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.example.connecct.components
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Settings
@@ -21,7 +22,7 @@ data class BottomNavItem(
 fun BottomNavBar(navController: NavController) {
     val items = listOf(
         BottomNavItem("Connect", "connect", Icons.Filled.Lan),
-        BottomNavItem("Keys", "keys", Icons.Filled.VpnKey),
+        BottomNavItem("Devices", "devices", Icons.Filled.Devices),
         BottomNavItem("History", "history", Icons.Filled.History),
         BottomNavItem("Settings", "settings", Icons.Filled.Settings),
     )

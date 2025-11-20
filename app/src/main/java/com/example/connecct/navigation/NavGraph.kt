@@ -1,16 +1,21 @@
 package com.example.connecct.navigation
 
+import DeviceScreen
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.connecct.components.BottomNavBar
-import com.example.connecct.ui.screen.*
-import com.example.connecct.ui.viewmodel.ConnectionViewModel
+import com.example.connecct.ui.screen.ConnectScreen
+import com.example.connecct.ui.screen.HistoryScreen
+import com.example.connecct.ui.screen.SettingsScreen
+import com.example.connecct.ui.viewmodel.DeviceViewModel
 import com.example.connecct.ui.viewmodel.KeysViewModel
+import com.example.connecct.ui.viewmodel.ConnectionViewModel
 import com.example.connecct.viewmodel.ThemeViewModel
 
 @Composable
@@ -20,37 +25,41 @@ fun NavGraph(
 ) {
     val navController = rememberNavController()
 
-    // ✅ Buat KeysViewModel sekali, agar tetap hidup saat berpindah tab
-    val keysViewModel: KeysViewModel = viewModel()
-
     Scaffold(
         bottomBar = { BottomNavBar(navController) }
     ) { paddingValues ->
         NavHost(
             navController = navController,
             startDestination = "connect",
-            modifier = androidx.compose.ui.Modifier.padding(paddingValues)
+            modifier = Modifier.padding(paddingValues)
         ) {
-            // ✅ kirim ViewModel koneksi ke layar Connect
-            composable("connect") { ConnectScreen(viewModel = connectionViewModel, navController = navController) }
-            composable("keys") {
-                KeysScreen(
-                    viewModel = keysViewModel,
-                    connectionViewModel = connectionViewModel,
-                    navController = navController,
-                    selectionMode = false
+            // CONNECT SCREEN
+            composable("connect") {
+                ConnectScreen(
+                    viewModel = connectionViewModel,
+                    navController = navController
                 )
             }
-            composable("keys_select"){
-                KeysScreen(
-                    viewModel = keysViewModel,
-                    connectionViewModel = connectionViewModel,
-                    navController = navController,
-                    selectionMode = true
+
+            // DEVICES SCREEN (pengganti keys)
+            composable("devices") {
+                val deviceViewModel: DeviceViewModel = viewModel()
+                DeviceScreen(viewModel = deviceViewModel)
+            }
+
+            // HISTORY SCREEN
+            composable("history") {
+                HistoryScreen()
+            }
+
+            // SETTINGS SCREEN — kirimkan KeysViewModel seperti semula
+            composable("settings") {
+                val keyViewModel: KeysViewModel = viewModel()
+                SettingsScreen(
+                    themeViewModel = themeViewModel,
+                    keyViewModel = keyViewModel
                 )
             }
-            composable("history") { HistoryScreen() }
-            composable("settings") { SettingsScreen(themeViewModel) }
         }
     }
 }

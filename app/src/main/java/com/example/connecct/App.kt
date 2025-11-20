@@ -1,7 +1,7 @@
 package com.example.connecct
 
 import android.app.Application
-import com.example.connecct.storage.loadStorageKey
+import com.example.connecct.storage.LoadStorageKey
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
 import kotlinx.coroutines.CoroutineScope
@@ -23,7 +23,7 @@ class App : Application() {
         }
 
         CoroutineScope(Dispatchers.IO).launch{
-            val loader = loadStorageKey(applicationContext)
+            val loader = LoadStorageKey(applicationContext)
             val keys = loader.loadKeys()
         }
     }
