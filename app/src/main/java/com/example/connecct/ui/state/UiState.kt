@@ -1,8 +1,7 @@
 package com.example.connecct.ui.state
 
-/**
- * Data class yang merepresentasikan UI state untuk connection screen
- */
+import android.content.Context
+
 data class UiState(
     val host: String = "",
     val username: String = "",
@@ -11,10 +10,19 @@ data class UiState(
     val status: String = "Idle",
     val connectionStatus: ConnectionStatus = ConnectionStatus.IDLE,
     val isConnecting: Boolean = false,
+
+    // --- File metadata (local key) ---
     val filename: String = "",
     val filesize: String = "",
     val errorMessage: String = "",
-    val isKeySelected: Boolean = false
+    val isKeySelected: Boolean = false,
+
+    // --- File Explorer (remote SSH) ---
+    val currentPath: String = "/",
+    val isLoadingDirectory: Boolean = false,
+    val remoteFiles: List<RemoteFile> = emptyList(),
+    val openedFileName: String? = null,
+    val openedFileContent: String? = null
 )
 
 enum class ConnectionStatus {
@@ -26,17 +34,20 @@ enum class ConnectionStatus {
     AUTH_ERROR
 }
 
-/**
- * Event yang dapat di-trigger dari UI
- */
 sealed class ConnectionUiEvent {
     data class OnHostChanged(val host: String) : ConnectionUiEvent()
     data class OnUsernameChanged(val username: String) : ConnectionUiEvent()
     data class OnPassphraseChanged(val passphrase: String) : ConnectionUiEvent()
     data class OnPrivateKeySelected(val path: String, val filename: String) : ConnectionUiEvent()
+    data class OpenFile(val fileName: String, val context: Context) : ConnectionUiEvent()
+
     object OnConnectClicked : ConnectionUiEvent()
     object OnResetClicked : ConnectionUiEvent()
-
-    // ✅ Tambahan baru untuk navigasi ke KeysScreen
     object OnChooseKeyClicked : ConnectionUiEvent()
+    object CloseFile : ConnectionUiEvent()
+
+    // Explorer events
+    object LoadDirectory : ConnectionUiEvent()
+    object NavigateUp : ConnectionUiEvent()
+    data class NavigateTo(val directoryName: String) : ConnectionUiEvent()
 }

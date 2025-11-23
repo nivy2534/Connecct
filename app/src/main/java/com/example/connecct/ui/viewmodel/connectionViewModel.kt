@@ -1,7 +1,6 @@
 package com.example.connecct.ui.viewmodel
 
 import android.content.Context
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.connecct.Conn.Connection
@@ -17,12 +16,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
-import com.example.connecct.Conn.UDPProbing
-import org.json.JSONObject
 
 class ConnectionViewModel : ViewModel() {
 
-    private val udpProbing = UDPProbing()
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
@@ -120,29 +116,33 @@ class ConnectionViewModel : ViewModel() {
     }
 
     fun handleQrConnection(context: Context, qrData: String) {
-        Log.d("QR_CONNECTION", "Raw QR data: $qrData")
-        val endpoint = parseQR(qrData) ?: run{
-            updatedStatus(ConnectionStatus.FAILED)
-            return
-        }
+        try {
+            val parts = qrData.split("|")
 
-        viewModelScope.launch {
-            updatedStatus(ConnectionStatus.CONNECTING)
-            val udpOk = udpProbing.udpPing(endpoint.ip, endpoint.secret)
-            Log.d("JSON_PAYLOAD", "JSON payload: $endpoint.ip, ${endpoint.udpPort}, ${endpoint.secret}")
-            Log.d("UDP_OK", "UDP OK: $udpOk")
-
-            if(!udpOk){
-                updatedStatus(ConnectionStatus.FAILED)
-                return@launch
+            if (parts.size < 3) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "Format QR tidak valid"
+                )
+                return
             }
 
-            updatedStatus(ConnectionStatus.CONNECTED)
+            val host = parts[0]
+            val username = parts[1]
+            val passphrase = parts[2]
+
+            _uiState.value = _uiState.value.copy(
+                host = host,
+                username = username,
+                passphrase = passphrase
+            )
+
+            connectToServer(context)
+
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(
+                errorMessage = "Gagal membaca QR: ${e.message}"
+            )
         }
-    }
-
-    private fun updatedStatus(status: ConnectionStatus){
-
     }
 
     // ⛔ HAPUS filesystem
@@ -167,24 +167,7 @@ class ConnectionViewModel : ViewModel() {
         }
     }
 
-    private fun parseQR(raw: String): QrEndpoint? = try{
-        val json = JSONObject(raw)
-        QrEndpoint(
-            ip = json.getString("hostname"),
-            udpPort = json.optInt("port"),
-            secret = json.optString("session")
-        )
-    }catch(e: Exception){
-        null
-    }
-
     private fun resetState() {
         _uiState.update { UiState() }
     }
-
-    data class QrEndpoint(
-        val ip: String,
-        val udpPort: Int,
-        val secret: String,
-    )
 }
