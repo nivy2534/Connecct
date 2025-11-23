@@ -3,7 +3,6 @@ package com.example.connecct.ui.screen
 import androidx.activity.compose.rememberLauncherForActivityResult
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
