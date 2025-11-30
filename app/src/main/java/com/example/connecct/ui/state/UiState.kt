@@ -21,8 +21,9 @@ data class UiState(
     val currentPath: String = "/",
     val isLoadingDirectory: Boolean = false,
     val remoteFiles: List<RemoteFile> = emptyList(),
-    val openedFileName: String? = null,
-    val openedFileContent: String? = null
+
+    // --- Opened file (ANY TYPE: text, image, pdf, etc) ---
+    val openedFile: OpenedFile? = null
 )
 
 enum class ConnectionStatus {
@@ -50,4 +51,20 @@ sealed class ConnectionUiEvent {
     object LoadDirectory : ConnectionUiEvent()
     object NavigateUp : ConnectionUiEvent()
     data class NavigateTo(val directoryName: String) : ConnectionUiEvent()
+}
+
+// --- NEW: Multi-type opened file support ---
+sealed class OpenedFile {
+
+    data class Text(val name: String, val content: String) : OpenedFile()
+
+    data class Image(val name: String, val bytes: ByteArray) : OpenedFile()
+
+    data class Pdf(val name: String, val bytes: ByteArray) : OpenedFile()
+
+    data class Video(val name: String, val bytes: ByteArray) : OpenedFile()
+
+    data class External(val name: String, val bytes: ByteArray, val mime: String) : OpenedFile()
+
+    data class Unsupported(val name: String, val bytes: ByteArray) : OpenedFile()
 }

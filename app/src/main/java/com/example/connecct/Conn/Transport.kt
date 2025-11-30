@@ -105,6 +105,32 @@ class Transport(private val connection: Connection){
         return tempFile.readText(Charsets.UTF_8)
     }
 
+    fun readFileBytes(remotePath: String): ByteArray {
+        val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
+        val sftp = ssh.newSFTPClient()
+        val remoteFile = sftp.open(remotePath)
+
+        return try {
+            val buffer = ByteArray(32 * 1024) // 32 KB buffer
+            val output = ByteArrayOutputStream()
+            var offset = 0L
+
+            while (true) {
+                val bytesRead = remoteFile.read(offset, buffer, 0, buffer.size)
+                if (bytesRead <= 0) break
+
+                output.write(buffer, 0, bytesRead)
+                offset += bytesRead
+            }
+
+            output.toByteArray()
+        } finally {
+            remoteFile.close()
+            sftp.close()
+        }
+    }
+
+
     fun getHomeDirectory(): String {
         val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
         val sftp = ssh.newSFTPClient()
