@@ -28,7 +28,6 @@ class LoadStorageKey(private val context: Context) {
                 privateFile = privFile.absolutePath,
                 publicFile = pubFile.absolutePath,
                 publicKeyContent = pubContent,
-
             )
         )
     }

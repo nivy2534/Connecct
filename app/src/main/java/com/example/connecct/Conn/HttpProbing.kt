@@ -6,6 +6,9 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import com.example.connecct.util.DesktopInfo
+import com.example.connecct.util.QrEndpoint
+import java.io.DataOutputStream
+import android.util.Log
 
 object HttpProbing {
     private const val CONNECT_TIMEOUT = 3000
@@ -41,4 +44,43 @@ object HttpProbing {
                 conn.disconnect()
             }
         }
+
+    suspend fun sendPublicKey(
+        endpoint: QrEndpoint,
+        publicKey: String,
+        comment: String? = null,
+        secret: String
+    ):Boolean = withContext(Dispatchers.IO){
+        val url = URL("http://${endpoint.ip}:${endpoint.httpPort}/keys/import")
+        Log.d("HTTP_REQUEST", "Sending public key to ${endpoint.ip}:${endpoint.httpPort}")
+        val conn = (url.openConnection() as HttpURLConnection).apply{
+            connectTimeout = CONNECT_TIMEOUT
+            readTimeout = READ_TIMEOUT
+            requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("Content-Type","application/json")
+            setRequestProperty(PAIR_HEADER, secret)
+        }
+        Log.d("HTTP_REQUEST", "sending secret: $secret")
+        return@withContext try{
+            val json = JSONObject().apply {
+                put("public_key", publicKey)
+                comment?.let { put("comment", it) }
+            }
+
+            DataOutputStream(conn.outputStream).use{out ->
+                out.write(json.toString().toByteArray(Charsets.UTF_8))
+                out.flush()
+            }
+
+            val code = conn.responseCode
+            Log.d("HTTP_RESPONSE", "Response code: $code $conn.responseMessage")
+            code in 200..299
+        }catch(e: Exception){
+            Log.e("HTTP_ERROR", "Error sending public key", e)
+            false
+        }finally {
+            conn.disconnect()
+        }
+    }
 }

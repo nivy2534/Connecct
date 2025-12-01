@@ -23,7 +23,8 @@ enum class ConnectionStatus {
     CONNECTED,
     FAILED,
     TIMEOUT,
-    AUTH_ERROR
+    AUTH_ERROR,
+    DISCONNECTED
 }
 
 /**

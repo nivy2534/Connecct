@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.connecct.Conn.Connection
+import com.example.connecct.Conn.HttpProbing
 import com.example.connecct.ui.state.ConnectionStatus
 import com.example.connecct.ui.state.ConnectionUiEvent
 import com.example.connecct.ui.state.UiState
@@ -18,7 +19,10 @@ import kotlinx.coroutines.withContext
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
 import com.example.connecct.Conn.UDPProbing
+import com.example.connecct.storage.LoadStorageKey
 import org.json.JSONObject
+import com.example.connecct.util.QrEndpoint
+import com.example.connecct.util.udpResult
 
 class ConnectionViewModel : ViewModel() {
 
@@ -127,22 +131,79 @@ class ConnectionViewModel : ViewModel() {
         }
 
         viewModelScope.launch {
+            val currentState = uiState.value
             updatedStatus(ConnectionStatus.CONNECTING)
             val udpOk = udpProbing.udpPing(endpoint.ip, endpoint.secret)
-            Log.d("JSON_PAYLOAD", "JSON payload: $endpoint.ip, ${endpoint.udpPort}, ${endpoint.secret}")
+            Log.d("JSON_PAYLOAD", "JSON payload: $endpoint.ip, ${endpoint.httpPort}, ${endpoint.secret}")
             Log.d("UDP_OK", "UDP OK: $udpOk")
 
-            if(!udpOk){
+            val key = loadKey(context) ?: run{
+                handleConnectionError(
+                    message = "Public key tidak ditemukan. Buat atau pilih key terlebih di pengaturan.",
+                    status = ConnectionStatus.FAILED,
+                    exception = IllegalStateException("No SSH key in storage")
+                )
+                return@launch
+            }
+            updatedStatus(ConnectionStatus.CONNECTING)
+            if(!udpOk.result){
                 updatedStatus(ConnectionStatus.FAILED)
                 return@launch
             }
+            /*
+            endpoint: QrEndpoint,
+            publicKey: String,
+            comment: String? = null,
+            secret: String
+            * */
 
-            updatedStatus(ConnectionStatus.CONNECTED)
+            Log.d("KEY_PUBLIC", "Key: ${key.publicKeyContent}")
+            val httpOk = HttpProbing.sendPublicKey(endpoint, key.publicKeyContent, null, udpOk.newSecret)
+            Log.d("HTTP_RESPONSE", "HTTP OK: $httpOk")
+            if(!httpOk){
+                updatedStatus(ConnectionStatus.FAILED)
+                return@launch
+            }
+            Log.d("KEY_PRIVATE", "Private key: ${key.privateFile}")
+            Log.d("KEY_PASSPHRASE", "Passphrase: ${currentState.passphrase}")
+            try {
+                withContext(Dispatchers.IO) {
+                    connection.connect(
+                        context = context,
+                        host = endpoint.ip,
+                        username = endpoint.username,
+                        passphrase = currentState.passphrase,
+                        privateKeyPath = key.privateFile
+                    )
+
+                }
+
+                updatedStatus(ConnectionStatus.CONNECTED)
+
+            } catch (e: Exception) {
+                handleConnectionError(
+                    "Failed to connect: ${e::class.simpleName}",
+                    ConnectionStatus.FAILED,
+                    e
+                )
+            }
         }
     }
 
     private fun updatedStatus(status: ConnectionStatus){
-
+        _uiState.update { state ->
+            state.copy(
+                connectionStatus = status,
+                isConnecting = status == ConnectionStatus.CONNECTING,
+                status = when (status) {
+                    ConnectionStatus.CONNECTING -> "Connecting..."
+                    ConnectionStatus.CONNECTED  -> "Connected"
+                    ConnectionStatus.FAILED     -> "Failed to connect"
+                    ConnectionStatus.DISCONNECTED -> "Disconnected"
+                    else                        -> state.status
+                }
+            )
+        }
     }
 
     // ⛔ HAPUS filesystem
@@ -171,7 +232,8 @@ class ConnectionViewModel : ViewModel() {
         val json = JSONObject(raw)
         QrEndpoint(
             ip = json.getString("hostname"),
-            udpPort = json.optInt("port"),
+            username = json.getString("username"),
+            httpPort = json.optInt("port"),
             secret = json.optString("session")
         )
     }catch(e: Exception){
@@ -182,9 +244,22 @@ class ConnectionViewModel : ViewModel() {
         _uiState.update { UiState() }
     }
 
-    data class QrEndpoint(
-        val ip: String,
-        val udpPort: Int,
-        val secret: String,
-    )
+    private suspend fun loadKey(context: Context): SSHKeys?{
+        return withContext(Dispatchers.IO){
+            LoadStorageKey(context).loadKeys().firstOrNull()
+        }
+    }
+
+    fun disconnect(){
+        viewModelScope.launch(Dispatchers.IO){
+            try{
+                connection.disconnect()
+                updatedStatus(ConnectionStatus.DISCONNECTED)
+            }catch (e: Exception){
+                Log.e("DISCONNECT", "Failed to disconnect: ${e::class.simpleName} - ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+
 }

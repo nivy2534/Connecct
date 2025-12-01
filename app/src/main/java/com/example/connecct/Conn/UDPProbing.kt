@@ -7,11 +7,12 @@ import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
 import android.util.Log
+import com.example.connecct.util.udpResult
 
 class UDPProbing(
     private val udpPort: Int = 33220
 ) {
-    suspend fun udpPing(ip: String, secret: String, timeouts: Int = 5000): Boolean = withContext(Dispatchers.IO){
+    suspend fun udpPing(ip: String, secret: String, timeouts: Int = 5000): udpResult = withContext(Dispatchers.IO){
         val payload = "CONNECCT_DISCOVERY:$secret".toByteArray()
         val buf = ByteArray(64)
         Log.d("UDP_PROBING", "Sending UDP packet to $ip:$udpPort with $payload")
@@ -28,12 +29,18 @@ class UDPProbing(
             val reply = DatagramPacket(buf, buf.size)
             return@withContext try{
                 socket.receive(reply)
+
                 val msg = String(reply.data, 0, reply.length)
-                msg.trim() == "OK"
-            }catch (e: SocketTimeoutException){
-                false
-            }catch (_: Exception){
-                false
+                val status = msg.substringBefore(":", missingDelimiterValue = msg)
+                val secret = msg.substringAfter(":", missingDelimiterValue = "")
+
+                if (status == "OK"){
+                    udpResult(true, secret)
+                }else{
+                    udpResult(false, "")
+                }
+            }catch (e: Exception){
+                udpResult(false, "")
             }
         }
     }

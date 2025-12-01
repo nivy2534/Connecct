@@ -73,24 +73,44 @@ fun ConnectScreen(
             )
 
             Spacer(Modifier.height(20.dp))
-
+            val isConnected = uiState.connectionStatus == ConnectionStatus.CONNECTED
+            val isConnecting = uiState.connectionStatus == ConnectionStatus.CONNECTING
             // 📷 Tombol Scan QR (tanpa animasi)
             Button(
                 onClick = {
-                    val options = ScanOptions().apply {
-                        setPrompt("Scan QR Code SSH")
-                        setBeepEnabled(true)
-                        setOrientationLocked(true)
+                    if (isConnected) {
+                        viewModel.disconnect()
+                    } else {
+                        if (!isConnecting) {
+                            val options = ScanOptions().apply {
+                                setPrompt("Scan QR Code SSH")
+                                setBeepEnabled(true)
+                                setOrientationLocked(true)
+                            }
+                            qrLauncher.launch(options)
+                        }
                     }
-                    qrLauncher.launch(options)
                 },
+                enabled = !isConnecting,
                 modifier = Modifier
                     .width(220.dp)
                     .height(60.dp),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor =
+                        when {
+                            isConnected -> Color(0xFFF44336)  // 🔴 merah saat connected
+                            isConnecting -> Color(0xFFFFC107) // 🟡 kuning saat connecting
+                            else -> MaterialTheme.colorScheme.primary // 🟢 default saat connect
+                        }
+                )
             ) {
                 Text(
-                    "Connect",
+                    text = when {
+                        isConnected -> "Disconnect"
+                        isConnecting -> "Connecting..."
+                        else -> "Connect"
+                    },
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
