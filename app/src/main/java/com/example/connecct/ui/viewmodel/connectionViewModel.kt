@@ -1,13 +1,17 @@
 package com.example.connecct.ui.viewmodel
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.connecct.Conn.Connection
 import com.example.connecct.Conn.HttpProbing
+import com.example.connecct.Conn.Transport
 import com.example.connecct.ui.state.ConnectionStatus
 import com.example.connecct.ui.state.ConnectionUiEvent
+import com.example.connecct.ui.state.OpenedFile
 import com.example.connecct.ui.state.UiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bouncycastle.jce.provider.BouncyCastleProvider
+import java.io.File
 import java.security.Security
 import com.example.connecct.Conn.UDPProbing
 import com.example.connecct.storage.LoadStorageKey
@@ -31,14 +36,23 @@ class ConnectionViewModel : ViewModel() {
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private val connection = Connection()
+    private val transport = Transport(connection)
 
     fun onEvent(event: ConnectionUiEvent) {
         when (event) {
             is ConnectionUiEvent.OnHostChanged -> updateHost(event.host)
             is ConnectionUiEvent.OnUsernameChanged -> updateUsername(event.username)
             is ConnectionUiEvent.OnPassphraseChanged -> updatePassphrase(event.passphrase)
-            is ConnectionUiEvent.OnPrivateKeySelected -> selectKeyFromSettings(event.path, event.filename)
+            is ConnectionUiEvent.OnPrivateKeySelected -> selectKey(event.path, event.filename)
+            is ConnectionUiEvent.OpenFile -> openFile(event.fileName, event.context)
+
             ConnectionUiEvent.OnResetClicked -> resetState()
+            ConnectionUiEvent.CloseFile -> closeFile()
+
+            // Explorer
+            ConnectionUiEvent.LoadDirectory -> loadDirectory()
+            ConnectionUiEvent.NavigateUp -> navigateUp()
+            is ConnectionUiEvent.NavigateTo -> navigateTo(event.directoryName)
             else -> {}
         }
     }
@@ -68,15 +82,14 @@ class ConnectionViewModel : ViewModel() {
 
     fun connectToServer(context: Context) {
         viewModelScope.launch {
-            val currentState = _uiState.value
 
-            if (currentState.host.isEmpty() || currentState.username.isEmpty() || currentState.privateKeyPath.isEmpty()) {
-                _uiState.update {
-                    it.copy(
-                        errorMessage = "Host, Username, dan Private Key harus diisi",
-                        connectionStatus = ConnectionStatus.FAILED
-                    )
-                }
+            val state = _uiState.value
+
+            if (state.host.isBlank() ||
+                state.username.isBlank() ||
+                state.privateKeyPath.isBlank()
+            ) {
+                fail("Host, Username, dan Private Key harus diisi")
                 return@launch
             }
 
@@ -97,10 +110,10 @@ class ConnectionViewModel : ViewModel() {
                 withContext(Dispatchers.IO) {
                     connection.connect(
                         context = context,
-                        host = currentState.host,
-                        username = currentState.username,
-                        passphrase = currentState.passphrase,
-                        privateKeyPath = currentState.privateKeyPath
+                        host = state.host,
+                        username = state.username,
+                        privateKeyPath = state.privateKeyPath,
+                        passphrase = state.passphrase
                     )
                 }
 
@@ -108,10 +121,18 @@ class ConnectionViewModel : ViewModel() {
                     it.copy(
                         isConnecting = false,
                         connectionStatus = ConnectionStatus.CONNECTED,
-                        status = "Connected successfully!",
-                        errorMessage = ""
+                        status = "Connected"
                     )
                 }
+
+                // 🔥 Ambil HOME directory asli dari server
+                val home = withContext(Dispatchers.IO) {
+                    transport.getHomeDirectory()
+                }
+
+                _uiState.update { it.copy(currentPath = home) }
+
+                loadDirectory()
 
             } catch (e: Exception) {
                 handleConnectionError(
@@ -121,6 +142,74 @@ class ConnectionViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    private fun fail(message: String) {
+        _uiState.update {
+            it.copy(
+                isConnecting = false,
+                connectionStatus = ConnectionStatus.FAILED,
+                status = "Error",
+                errorMessage = message
+            )
+        }
+    }
+
+    fun loadDirectory() {
+        val path = _uiState.value.currentPath
+
+        if (!connection.isConnected()) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingDirectory = true) }
+
+            try {
+                val files = withContext(Dispatchers.IO) {
+                    transport.listDirectory(path)
+                }
+
+                _uiState.update {
+                    it.copy(
+                        remoteFiles = files,
+                        isLoadingDirectory = false
+                    )
+                }
+
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoadingDirectory = false,
+                        errorMessage = e.message ?: "Failed to load directory"
+                    )
+                }
+            }
+        }
+    }
+
+    fun navigateTo(dir: String) {
+        if (dir.isBlank()) return
+
+        val newPath =
+            if (_uiState.value.currentPath == "/") "/$dir"
+            else _uiState.value.currentPath.trimEnd('/') + "/$dir"
+
+        _uiState.update { it.copy(currentPath = newPath) }
+        loadDirectory()
+    }
+
+    fun navigateUp() {
+        val current = _uiState.value.currentPath
+        if (current == "/") return
+
+        val up = current.trimEnd('/').substringBeforeLast("/", "")
+
+        _uiState.update {
+            it.copy(
+                currentPath = if (up.isEmpty()) "/" else up
+            )
+        }
+
+        loadDirectory()
     }
 
     fun handleQrConnection(context: Context, qrData: String) {
@@ -207,7 +296,7 @@ class ConnectionViewModel : ViewModel() {
     }
 
     // ⛔ HAPUS filesystem
-    fun selectKeyFromSettings(path: String, filename: String) {
+    private fun selectKey(path: String, filename: String) {
         _uiState.update {
             it.copy(
                 privateKeyPath = path,
@@ -226,6 +315,108 @@ class ConnectionViewModel : ViewModel() {
                 errorMessage = exception.message ?: message
             )
         }
+    }
+
+    fun openFile(fileName: String, context: Context) {
+        if (!connection.isConnected()) {
+            _uiState.update { it.copy(errorMessage = "Not Connected") }
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val path = uiState.value.currentPath
+                val remotePath =
+                    if (path == "/") "/$fileName" else "$path/$fileName"
+
+                val bytes = withContext(Dispatchers.IO) {
+                    transport.readFileBytes(remotePath)
+                }
+
+                // TEXT FILES
+                if (fileName.endsWith(".txt") ||
+                    fileName.endsWith(".log") ||
+                    fileName.endsWith(".csv") ||
+                    fileName.endsWith(".json") ||
+                    fileName.endsWith(".xml")
+                ) {
+                    _uiState.update {
+                        it.copy(
+                            openedFile = OpenedFile.Text(
+                                name = fileName,
+                                content = bytes.toString(Charsets.UTF_8)
+                            )
+                        )
+                    }
+                    return@launch
+                }
+
+                // IMAGE FILES
+                if (fileName.endsWith(".jpg") ||
+                    fileName.endsWith(".jpeg") ||
+                    fileName.endsWith(".png")
+                ) {
+                    _uiState.update {
+                        it.copy(
+                            openedFile = OpenedFile.Image(
+                                name = fileName,
+                                bytes = bytes
+                            )
+                        )
+                    }
+                    return@launch
+                }
+
+                // PDF FILES
+                if (fileName.endsWith(".pdf")) {
+                    _uiState.update {
+                        it.copy(openedFile = OpenedFile.Pdf(fileName, bytes))
+                    }
+                    return@launch
+                }
+
+                // VIDEO FILES
+                if (fileName.endsWith(".mp4") ||
+                    fileName.endsWith(".mov") ||
+                    fileName.endsWith(".mkv") ||
+                    fileName.endsWith(".avi")
+                ) {
+                    _uiState.update {
+                        it.copy(
+                            openedFile = OpenedFile.Video(
+                                name = fileName,
+                                bytes = bytes
+                            )
+                        )
+                    }
+                    return@launch
+                }
+
+                // UNSUPPORTED → fallback to external intent viewer
+                val localFile = File(context.cacheDir, fileName)
+                withContext(Dispatchers.IO) { localFile.writeBytes(bytes) }
+
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    context.packageName + ".provider",
+                    localFile
+                )
+
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "*/*")
+                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                }
+
+                context.startActivity(intent)
+
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Failed to open file: ${e.message}") }
+            }
+        }
+    }
+
+    fun closeFile() {
+        _uiState.update { it.copy(openedFile = null) }
     }
 
     private fun parseQR(raw: String): QrEndpoint? = try{

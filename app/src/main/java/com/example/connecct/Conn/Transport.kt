@@ -1,5 +1,7 @@
 package com.example.connecct.Conn
 
+import android.content.Context
+import com.example.connecct.ui.state.RemoteFile
 import net.schmizz.sshj.common.StreamCopier
 import net.schmizz.sshj.xfer.TransferListener
 import java.io.ByteArrayOutputStream
@@ -79,4 +81,61 @@ class Transport(private val connection: Connection){
         onProgress(1f)
     }
 
+    fun listDirectory(path: String): List<RemoteFile> {
+        val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
+
+        val sftp = ssh.newSFTPClient()
+        val list = sftp.ls(path)
+        sftp.close()
+
+        return list
+            .filter { it.name != "." && it.name != ".." }
+            .map { file ->
+                RemoteFile(
+                    name = file.name,
+                    size = file.attributes.size ?: 0L,
+                    isDirectory = file.attributes.type == net.schmizz.sshj.sftp.FileMode.Type.DIRECTORY
+                )
+            }
+    }
+
+    fun readFile(path: String, context: Context): String {
+        val tempFile = File.createTempFile("ssh_read_", ".tmp", context.cacheDir)
+        downloadFile(path, tempFile.absolutePath) // pakai fungsi downloadFile yang sudah ada
+        return tempFile.readText(Charsets.UTF_8)
+    }
+
+    fun readFileBytes(remotePath: String): ByteArray {
+        val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
+        val sftp = ssh.newSFTPClient()
+        val remoteFile = sftp.open(remotePath)
+
+        return try {
+            val buffer = ByteArray(32 * 1024) // 32 KB buffer
+            val output = ByteArrayOutputStream()
+            var offset = 0L
+
+            while (true) {
+                val bytesRead = remoteFile.read(offset, buffer, 0, buffer.size)
+                if (bytesRead <= 0) break
+
+                output.write(buffer, 0, bytesRead)
+                offset += bytesRead
+            }
+
+            output.toByteArray()
+        } finally {
+            remoteFile.close()
+            sftp.close()
+        }
+    }
+
+
+    fun getHomeDirectory(): String {
+        val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
+        val sftp = ssh.newSFTPClient()
+        val home = sftp.canonicalize(".")
+        sftp.close()
+        return home
+    }
 }
