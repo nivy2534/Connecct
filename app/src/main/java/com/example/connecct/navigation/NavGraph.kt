@@ -34,6 +34,11 @@ fun NavGraph(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    val context = LocalContext.current
+    val deviceViewModel: DeviceViewModel = viewModel(
+        factory = DeviceViewModelFactory(context.applicationContext)
+    )
+
     Scaffold(
         bottomBar = {
             if (currentRoute != "pin") {
@@ -64,10 +69,6 @@ fun NavGraph(
             }
 
             composable("connect") {
-                val context = LocalContext.current
-                val deviceViewModel: DeviceViewModel = viewModel(
-                    factory = DeviceViewModelFactory(context.applicationContext)
-                )
                 ConnectScreen(
                     viewModel = connectionViewModel,
                     navController = navController,
@@ -78,6 +79,7 @@ fun NavGraph(
             composable("connect_beta") {
                 ConnectBetaScreen(
                     viewModel = connectionViewModel,
+                    deviceViewModel = deviceViewModel,
                     navController = navController
                 )
             }

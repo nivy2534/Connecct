@@ -24,7 +24,7 @@ class LoadStoredDevice(private val context:Context) {
                     deviceName = obj.getString("deviceName"),
                     os = if(obj.has("os") && !obj.isNull("os")) obj.getString("os") else null,
                     isOnline = obj.getBoolean("isOnline"),
-                    lastSeen = obj.getLong("lastSeen"),
+                    lastSeen = obj.getString("lastSeen"),
                     isConnected = obj.getBoolean("isConnected")
                 )
             )
