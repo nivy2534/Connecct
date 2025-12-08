@@ -476,36 +476,65 @@ class ConnectionViewModel : ViewModel() {
     }
 
     fun uploadFileFromAndroid(uri: Uri, context: Context) {
-        if (!connection.isConnected()) {
+        // 🔍 Log kondisi awal
+        val stillConnected = connection.isConnected()
+        Log.d("UPLOAD_FILE", "=== uploadFileFromAndroid() called ===")
+        Log.d("UPLOAD_FILE", "Initial isConnected() = $stillConnected")
+        Log.d("UPLOAD_FILE", "CurrentPath = ${_uiState.value.currentPath}")
+        Log.d("UPLOAD_FILE", "URI = $uri")
+
+        if (!stillConnected) {
+            Log.d("UPLOAD_FILE", "❌ Connection not established. Upload aborted.")
             _uiState.update { it.copy(errorMessage = "Not connected") }
             return
         }
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                _uiState.update { it.copy(isUploading = true) }
+                Log.d("UPLOAD_FILE", "🚀 Starting upload process in IO coroutine...")
+
+                _uiState.update { it.copy(isUploading = true, uploadProgress = 0) }
 
                 val resolver = context.contentResolver
 
-                val inputStream = resolver.openInputStream(uri)
-                    ?: throw Exception("Cannot open InputStream")
+                // 🔍 Cek ukuran file
+                val fileName = resolver.getFileName(uri) ?: "uploaded_file"
+                val fileSize = resolver.getFileSize(uri)
+                Log.d("UPLOAD_FILE", "📄 File name  : $fileName")
+                Log.d("UPLOAD_FILE", "📏 File size  : ${fileSize ?: -1} bytes")
 
-                val fileName = resolver.getFileName(uri)
-                    ?: "uploaded_file"
+                val inputStream = resolver.openInputStream(uri)
+                    ?: throw Exception("Cannot open InputStream from URI: $uri")
+
+                Log.d("UPLOAD_FILE", "📂 InputStream opened from URI: $uri")
 
                 val basePath = _uiState.value.currentPath.trimEnd('/')
+                Log.d("UPLOAD_FILE", "📁 Current remote directory: '$basePath'")
 
-                val remotePath = if (basePath.isEmpty())
-                    "/$fileName"
-                else
-                    "$basePath/$fileName"
+                val remotePath = if (basePath.isEmpty()) "/$fileName" else "$basePath/$fileName"
+                Log.d("UPLOAD_FILE", "➡️ Upload target path: $remotePath")
 
-                // ✅ UPLOAD
-                transport.sftpPut(inputStream, remotePath, context)
+                Log.d("UPLOAD_FILE", "⏫ Upload started... (calling sftpPut)")
 
-                inputStream.close() // ✅ WAJIB
+                // === UPLOAD FILE ===
+                try {
+                    transport.sftpPut(
+                        input = inputStream,
+                        remotePath = remotePath,
+                        context = context
+                    )
+                    Log.d("UPLOAD_FILE", "📡 sftpPut() finished without throwing.")
+                } finally {
+                    inputStream.close()
+                    Log.d("UPLOAD_FILE", "🔒 InputStream closed.")
+                }
+
+                // Cek lagi kondisi koneksi setelah upload
+                val afterConnected = connection.isConnected()
+                Log.d("UPLOAD_FILE", "After sftpPut isConnected() = $afterConnected")
 
                 loadDirectory()
+                Log.d("UPLOAD_FILE", "🔄 Directory reloaded after upload.")
 
                 _uiState.update {
                     it.copy(
@@ -514,8 +543,28 @@ class ConnectionViewModel : ViewModel() {
                     )
                 }
 
+                Log.d("UPLOAD_FILE", "✅ Upload finished successfully.")
+
             } catch (e: Exception) {
-                Log.e("UPLOAD", "UPLOAD FAILED", e)
+                Log.e(
+                    "UPLOAD_FILE",
+                    "❌ Upload failed: ${e.message} | type=${e::class.java.name}",
+                    e
+                )
+
+                // kalau error terkait koneksi, tandai DISCONNECTED
+                if (e.message?.contains("Not Connected", ignoreCase = true) == true ||
+                    e.message?.contains("Not connected", ignoreCase = true) == true
+                ) {
+                    Log.e("UPLOAD_FILE", "🚨 Detected 'Not connected' error. Forcing disconnect().")
+                    try {
+                        connection.disconnect()
+                    } catch (ex: Exception) {
+                        Log.e("UPLOAD_FILE", "Error while disconnecting after failure: ${ex.message}", ex)
+                    }
+                    updatedStatus(ConnectionStatus.DISCONNECTED)
+                }
+
                 _uiState.update {
                     it.copy(
                         isUploading = false,
@@ -526,6 +575,7 @@ class ConnectionViewModel : ViewModel() {
         }
     }
 
+
     private fun ContentResolver.getFileName(uri: Uri): String? {
         val cursor = query(uri, null, null, null, null) ?: return null
         val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -534,6 +584,20 @@ class ConnectionViewModel : ViewModel() {
         cursor.close()
         return name
     }
+
+    private fun ContentResolver.getFileSize(uri: Uri): Long? {
+        val cursor = query(uri, null, null, null, null) ?: return null
+        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+        if (sizeIndex == -1) {
+            cursor.close()
+            return null
+        }
+        cursor.moveToFirst()
+        val size = cursor.getLong(sizeIndex)
+        cursor.close()
+        return size
+    }
+
 
     private fun parseQR(raw: String): QrEndpoint? = try{
         val json = JSONObject(raw)

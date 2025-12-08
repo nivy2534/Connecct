@@ -88,7 +88,17 @@ class Connection {
     // ... (isConnected dan disconnect tetap sama) ...
 
     fun isConnected(): Boolean {
-        return ssh?.isAuthenticated == true
+        val client = ssh ?: return false
+
+        val connected = client.isConnected
+        val authed = client.isAuthenticated
+
+        Log.d(
+            "SSH_CONNECT",
+            "isConnected() check -> socketConnected=$connected, authenticated=$authed"
+        )
+
+        return connected && authed
     }
 
     fun disconnect() {
