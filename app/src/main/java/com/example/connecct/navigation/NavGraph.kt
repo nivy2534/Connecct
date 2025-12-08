@@ -1,6 +1,7 @@
 package com.example.connecct.navigation
 
-import DeviceScreen
+import com.example.connecct.ui.screen.DeviceScreen
+import com.example.connecct.ui.viewmodel.DeviceViewModelFactory
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -20,6 +21,8 @@ import com.example.connecct.ui.viewmodel.ConnectionViewModel
 import com.example.connecct.viewmodel.ThemeViewModel
 import com.example.connecct.storage.PinStorage
 import com.example.connecct.viewmodel.PinViewModel
+import com.example.connecct.viewmodel.PinViewModelFactory
+
 
 @Composable
 fun NavGraph(
@@ -46,7 +49,9 @@ fun NavGraph(
             // PIN
             composable("pin") {
                 val context = LocalContext.current
-                val pinViewModel = PinViewModel(PinStorage(context))
+                val pinViewModel: PinViewModel = viewModel(
+                    factory = PinViewModelFactory(context.applicationContext)
+                )
 
                 PinScreen(
                     viewModel = pinViewModel,
@@ -59,9 +64,14 @@ fun NavGraph(
             }
 
             composable("connect") {
+                val context = LocalContext.current
+                val deviceViewModel: DeviceViewModel = viewModel(
+                    factory = DeviceViewModelFactory(context.applicationContext)
+                )
                 ConnectScreen(
                     viewModel = connectionViewModel,
-                    navController = navController
+                    navController = navController,
+                    deviceViewModel = deviceViewModel
                 )
             }
 
@@ -73,7 +83,11 @@ fun NavGraph(
             }
 
             composable("devices") {
-                val deviceViewModel: DeviceViewModel = viewModel()
+                val context = LocalContext.current
+                val deviceViewModel: DeviceViewModel = viewModel(
+                    factory = DeviceViewModelFactory(context.applicationContext)
+                )
+
                 DeviceScreen(viewModel = deviceViewModel)
             }
 

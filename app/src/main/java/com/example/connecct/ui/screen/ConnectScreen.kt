@@ -21,11 +21,14 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.connecct.ui.state.ConnectionStatus
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
+import com.example.connecct.ui.viewmodel.DeviceViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun ConnectScreen(
     viewModel: ConnectionViewModel,
-    navController: NavController
+    navController: NavController,
+    deviceViewModel: DeviceViewModel
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -36,6 +39,16 @@ fun ConnectScreen(
     ) { result ->
         if (result.contents != null) {
             viewModel.handleQrConnection(context, result.contents)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.deviceFromQr.collect { endpoint ->
+            android.util.Log.d(
+                "CONNECT_SCREEN",
+                "Received endpoint from QR: ${endpoint.username}@${endpoint.ip}"
+            )
+            deviceViewModel.addOrUpdateFromQr(endpoint, true)
         }
     }
 

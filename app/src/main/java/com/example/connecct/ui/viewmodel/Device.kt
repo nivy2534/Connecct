@@ -1,8 +1,12 @@
 package com.example.connecct.ui.viewmodel
 
 data class Device(
-    val name: String,
-    val ip: String,
-    val status: String, // Online / Offline
-    val lastSeen: String
+    val id: String,           // unik, misal "username@ip"
+    val host: String,         // IP / hostname
+    val user: String,         // username SSH
+    val deviceName: String,   // nama buat tampil di UI ("Laptop Work", "Server VPS", dll)
+    val os: String? = null,   // opsional, kalau nanti bisa detect OS
+    val isOnline: Boolean,    // status online sekarang
+    val lastSeen: Long,       // timestamp millis, nanti bisa di-format jadi "1 menit lalu"
+    val isConnected: Boolean  // apakah saat ini session aktif
 )

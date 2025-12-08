@@ -33,6 +33,7 @@ object HttpProbing {
                     DesktopInfo(
                         os = json.optString("os", null),
                         user = json.optString("user", endpoint.username),
+                        host = endpoint.ip,
                         deviceName = json.optString("deviceName", endpoint.devicename)
                     )
                 } else {

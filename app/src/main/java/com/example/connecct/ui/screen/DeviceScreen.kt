@@ -1,3 +1,5 @@
+package com.example.connecct.ui.screen
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,12 +15,20 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.connecct.ui.components.DeviceCard
 import com.example.connecct.ui.viewmodel.DeviceViewModel
 import com.example.connecct.ui.viewmodel.Device
+import android.util.Log
+import androidx.compose.ui.platform.LocalContext
+import com.example.connecct.ui.viewmodel.DeviceViewModelFactory
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeviceScreen(viewModel: DeviceViewModel = viewModel()) {
-
+fun DeviceScreen(
+    viewModel: DeviceViewModel
+) {
     val devices = viewModel.devices
+
+    LaunchedEffect(devices) {
+        Log.d("DEVICE_SCREEN", "DeviceScreen recomposed, devices count = ${devices.size}")
+    }
 
     var selectedDevice by remember { mutableStateOf<Device?>(null) }
     var showDialog by remember { mutableStateOf(false) }
@@ -30,7 +40,6 @@ fun DeviceScreen(viewModel: DeviceViewModel = viewModel()) {
             )
         }
     ) { padding ->
-
         Box(
             modifier = Modifier
                 .padding(padding)
@@ -49,10 +58,12 @@ fun DeviceScreen(viewModel: DeviceViewModel = viewModel()) {
                         DeviceCard(
                             device = device,
                             onClick = {
+                                Log.d("DEVICE_SCREEN", "Clicked device: ${device.id}")
                                 selectedDevice = device
                                 showDialog = true
                             },
                             onDelete = {
+                                Log.d("DEVICE_SCREEN", "Removing device: ${device.id}")
                                 viewModel.removeDevice(device)
                             }
                         )
@@ -63,6 +74,9 @@ fun DeviceScreen(viewModel: DeviceViewModel = viewModel()) {
             if (showDialog && selectedDevice != null) {
 
                 val device = selectedDevice!!
+                val displayName = device.deviceName.ifBlank { "${device.user}@${device.host}" }
+                val ip = device.host
+                val statusText = if (device.isOnline) "Online" else "Offline"
 
                 AlertDialog(
                     onDismissRequest = { showDialog = false },
@@ -74,10 +88,12 @@ fun DeviceScreen(viewModel: DeviceViewModel = viewModel()) {
                     title = { Text("Device Details", fontWeight = FontWeight.Bold) },
                     text = {
                         Column {
-                            Text("Name: ${device.name}")
-                            Text("IP: ${device.ip}")
-                            Text("Status: ${device.status}")
-                            Text("Last seen: ${device.lastSeen}")
+                            Text("Name: $displayName")
+                            Text("User: ${device.user}")
+                            Text("OS: ${device.os ?: "-"}")
+                            Text("IP: $ip")
+                            Text("Status: $statusText")
+                            Text("Last seen (raw): ${device.lastSeen}")
                         }
                     }
                 )

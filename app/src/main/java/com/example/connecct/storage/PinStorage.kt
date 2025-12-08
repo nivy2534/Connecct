@@ -3,6 +3,7 @@ package com.example.connecct.storage
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
+import android.util.Log
 
 class PinStorage(context: Context) {
 
@@ -20,5 +21,11 @@ class PinStorage(context: Context) {
         shared.edit().putString("pin", pin).apply()
     }
 
-    fun getPin(): String? = shared.getString("pin", null)
+    fun getPin(): String? {
+        val exists = shared.contains("pin")
+        Log.d("PIN_STORAGE", "getPin() called, exists=$exists")
+        val pin = shared.getString("pin", null)
+        Log.d("PIN_STORAGE", "getPin() result length=${pin?.length ?: 0}")
+        return pin
+    }
 }

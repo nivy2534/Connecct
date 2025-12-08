@@ -14,6 +14,9 @@ fun DeviceCard(
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val displayName = device.deviceName.ifBlank { "${device.user}@${device.host}" }
+    val ip = device.host
+    val statusText = if (device.isOnline) "Online" else "Offline"
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -21,9 +24,10 @@ fun DeviceCard(
             .clickable { onClick() }
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(device.name, style = MaterialTheme.typography.titleMedium)
-            Text("IP: ${device.ip}", style = MaterialTheme.typography.bodyMedium)
-            Text("Status: ${device.status}")
+            Text(displayName, style = MaterialTheme.typography.titleMedium)
+            Text("IP: ${ip}", style = MaterialTheme.typography.bodyMedium)
+            Text("Status: ${statusText}", style = MaterialTheme.typography.bodyMedium)
+            Text("Last seen: ${device.lastSeen}", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
 
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {

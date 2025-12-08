@@ -27,7 +27,7 @@ import com.example.connecct.Conn.UDPProbing
 import com.example.connecct.storage.LoadStorageKey
 import org.json.JSONObject
 import com.example.connecct.util.QrEndpoint
-import com.example.connecct.util.udpResult
+import kotlinx.coroutines.flow.asSharedFlow
 
 class ConnectionViewModel : ViewModel() {
 
@@ -37,6 +37,12 @@ class ConnectionViewModel : ViewModel() {
 
     private val connection = Connection()
     private val transport = Transport(connection)
+
+    private val _deviceFromQr = kotlinx.coroutines.flow.MutableSharedFlow<QrEndpoint>(
+        extraBufferCapacity = 1
+    )
+
+    val deviceFromQr = _deviceFromQr.asSharedFlow()
 
     fun onEvent(event: ConnectionUiEvent) {
         when (event) {
@@ -268,6 +274,8 @@ class ConnectionViewModel : ViewModel() {
                 }
 
                 updatedStatus(ConnectionStatus.CONNECTED)
+
+                _deviceFromQr.tryEmit(endpoint)
 
             } catch (e: Exception) {
                 handleConnectionError(
