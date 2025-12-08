@@ -34,7 +34,14 @@ class DeviceViewModel(
             "DEVICE_VM",
             "addOrUpdateFromQr called for ${endpoint.username}@${endpoint.ip}, connected=$connected"
         )
-        // kalau mau central, mending panggil repo.addOrUpdateFromQr di sini juga:
         repo.addOrUpdateFromQr(endpoint, connected)
+    }
+
+    fun addOrUpdateManual(host: String, username: String, connected: Boolean) {
+        android.util.Log.d(
+            "DEVICE_VM",
+            "addOrUpdateManual called for $username@$host, connected=$connected"
+        )
+        repo.addOrUpdateManual(host, username, connected)
     }
 }

@@ -30,11 +30,13 @@ import com.example.connecct.ui.state.RemoteFile
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import com.example.connecct.ui.viewmodel.DeviceViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectBetaScreen(
     viewModel: ConnectionViewModel,
+    deviceViewModel: DeviceViewModel,
     navController: NavController
 ) {
     val context = LocalContext.current
@@ -44,6 +46,19 @@ fun ConnectBetaScreen(
     LaunchedEffect(ui.errorMessage) {
         if (ui.errorMessage.isNotEmpty()) {
             snackbar.showSnackbar(ui.errorMessage)
+        }
+    }
+
+    LaunchedEffect(ui.connectionStatus, ui.host, ui.username, ui.username) {
+        if(ui.connectionStatus == ConnectionStatus.CONNECTED &&
+            ui.host.isNotBlank() &&
+            ui.username.isNotBlank()
+            ){
+            deviceViewModel.addOrUpdateManual(
+                host = ui.host,
+                username = ui.username,
+                connected = true
+            )
         }
     }
 
