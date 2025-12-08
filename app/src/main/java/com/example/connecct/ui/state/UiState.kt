@@ -1,6 +1,7 @@
 package com.example.connecct.ui.state
 
 import android.content.Context
+import android.net.Uri
 
 data class UiState(
     val host: String = "",
@@ -23,8 +24,12 @@ data class UiState(
     val remoteFiles: List<RemoteFile> = emptyList(),
 
     // --- Opened file (ANY TYPE: text, image, pdf, etc) ---
-    val openedFile: OpenedFile? = null
-)
+    val openedFile: OpenedFile? = null,
+
+    // Upload File
+    val isUploading: Boolean = false,
+    val uploadProgress: Int = 0,
+    )
 
 enum class ConnectionStatus {
     IDLE,
@@ -42,6 +47,7 @@ sealed class ConnectionUiEvent {
     data class OnPassphraseChanged(val passphrase: String) : ConnectionUiEvent()
     data class OnPrivateKeySelected(val path: String, val filename: String) : ConnectionUiEvent()
     data class OpenFile(val fileName: String, val context: Context) : ConnectionUiEvent()
+    data class UploadFile(val uri: Uri, val context: Context) : ConnectionUiEvent()
 
     object OnConnectClicked : ConnectionUiEvent()
     object OnResetClicked : ConnectionUiEvent()

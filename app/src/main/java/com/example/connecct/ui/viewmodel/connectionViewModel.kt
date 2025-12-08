@@ -1,7 +1,10 @@
 package com.example.connecct.ui.viewmodel
 
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
@@ -28,6 +31,7 @@ import com.example.connecct.storage.LoadStorageKey
 import org.json.JSONObject
 import com.example.connecct.util.QrEndpoint
 import kotlinx.coroutines.flow.asSharedFlow
+import java.io.InputStream
 
 class ConnectionViewModel : ViewModel() {
 
@@ -51,6 +55,7 @@ class ConnectionViewModel : ViewModel() {
             is ConnectionUiEvent.OnPassphraseChanged -> updatePassphrase(event.passphrase)
             is ConnectionUiEvent.OnPrivateKeySelected -> selectKey(event.path, event.filename)
             is ConnectionUiEvent.OpenFile -> openFile(event.fileName, event.context)
+            is ConnectionUiEvent.UploadFile -> uploadFile(event.uri, event.context)
 
             ConnectionUiEvent.OnResetClicked -> resetState()
             ConnectionUiEvent.CloseFile -> closeFile()
@@ -425,6 +430,109 @@ class ConnectionViewModel : ViewModel() {
 
     fun closeFile() {
         _uiState.update { it.copy(openedFile = null) }
+    }
+
+    fun uploadFile(uri: Uri, context: Context) {
+        if (!connection.isConnected()) {
+            _uiState.update { it.copy(errorMessage = "Not connected") }
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _uiState.update { it.copy(isUploading = true, uploadProgress = 0) }
+
+                val resolver = context.contentResolver
+                val input = resolver.openInputStream(uri)
+                    ?: throw Exception("Cannot open file")
+
+                val fileName = resolver.getFileName(uri) ?: "file.bin"
+
+                val remotePath =
+                    if (_uiState.value.currentPath == "/")
+                        "/$fileName"
+                    else
+                        "${_uiState.value.currentPath}/$fileName"
+
+                // Upload via SFTP
+                transport.sftpPut(input, remotePath, context) // <- SFTP UPLOAD
+
+                input.close()
+
+                // Refresh directory after upload
+                loadDirectory()
+
+                _uiState.update { it.copy(isUploading = false, uploadProgress = 100) }
+
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isUploading = false,
+                        errorMessage = "Upload failed: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun uploadFileFromAndroid(uri: Uri, context: Context) {
+        if (!connection.isConnected()) {
+            _uiState.update { it.copy(errorMessage = "Not connected") }
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _uiState.update { it.copy(isUploading = true) }
+
+                val resolver = context.contentResolver
+
+                val inputStream = resolver.openInputStream(uri)
+                    ?: throw Exception("Cannot open InputStream")
+
+                val fileName = resolver.getFileName(uri)
+                    ?: "uploaded_file"
+
+                val basePath = _uiState.value.currentPath.trimEnd('/')
+
+                val remotePath = if (basePath.isEmpty())
+                    "/$fileName"
+                else
+                    "$basePath/$fileName"
+
+                // ✅ UPLOAD
+                transport.sftpPut(inputStream, remotePath, context)
+
+                inputStream.close() // ✅ WAJIB
+
+                loadDirectory()
+
+                _uiState.update {
+                    it.copy(
+                        isUploading = false,
+                        uploadProgress = 100
+                    )
+                }
+
+            } catch (e: Exception) {
+                Log.e("UPLOAD", "UPLOAD FAILED", e)
+                _uiState.update {
+                    it.copy(
+                        isUploading = false,
+                        errorMessage = "Upload failed: ${e.localizedMessage ?: e.toString()}"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun ContentResolver.getFileName(uri: Uri): String? {
+        val cursor = query(uri, null, null, null, null) ?: return null
+        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        cursor.moveToFirst()
+        val name = cursor.getString(nameIndex)
+        cursor.close()
+        return name
     }
 
     private fun parseQR(raw: String): QrEndpoint? = try{

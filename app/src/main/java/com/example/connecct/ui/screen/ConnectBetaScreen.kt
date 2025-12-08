@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.documentfile.provider.DocumentFile
 import androidx.navigation.NavController
 import com.example.connecct.ui.state.ConnectionStatus
@@ -55,6 +56,8 @@ fun ConnectBetaScreen(
             ConnectionScreen(viewModel, context, padding, navController)
         }
     }
+
+    LoadingDialog(ui.isConnecting)
 }
 
 @Composable
@@ -72,7 +75,7 @@ fun ConnectionScreen(
         contract = ScanContract()
     ) { result ->
         if (result.contents != null) {
-            // Memproses QR → isi form → koneksi
+            // Mulai proses QR → langsung aktifkan loading dari ViewModel
             viewModel.handleQrConnection(context, result.contents)
         }
     }
@@ -85,9 +88,7 @@ fun ConnectionScreen(
             .padding(24.dp)
     ) {
 
-        // ================================
-        // 🔵 HEADER: SSH + QR ICON KANAN
-        // ================================
+        // SSH + Scan QR
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -213,4 +214,33 @@ fun getFileMetadata(context: Context, uri: Uri): Pair<String, String> {
     val name = doc?.name ?: "Unknown"
     val size = doc?.length() ?: 0L
     return name to "${size / 1024} KB"
+}
+
+@Composable
+fun LoadingDialog(isVisible: Boolean) {
+    if (!isVisible) return
+
+    Dialog(onDismissRequest = {}) {
+
+        val bg = MaterialTheme.colorScheme.surfaceColorAtElevation(12.dp)
+
+        Box(
+            modifier = Modifier
+                .size(140.dp)
+                .background(bg, shape = RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Connecting...",
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
 }
