@@ -2,6 +2,7 @@ package com.example.connecct.ui.screen
 
 import android.content.Context
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,6 +10,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +27,8 @@ import com.example.connecct.ui.state.ConnectionStatus
 import com.example.connecct.ui.state.ConnectionUiEvent
 import com.example.connecct.ui.state.RemoteFile
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +67,16 @@ fun ConnectionScreen(
     val ui = viewModel.uiState.collectAsState().value
     val scroll = rememberScrollState()
 
+    // 📌 ZXing QR Scanner Launcher
+    val qrLauncher = rememberLauncherForActivityResult(
+        contract = ScanContract()
+    ) { result ->
+        if (result.contents != null) {
+            // Memproses QR → isi form → koneksi
+            viewModel.handleQrConnection(context, result.contents)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -70,9 +85,36 @@ fun ConnectionScreen(
             .padding(24.dp)
     ) {
 
-        Text("SSH Connect", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Text("Secure shell connection manager", color = Color.Gray)
+        // ================================
+        // 🔵 HEADER: SSH + QR ICON KANAN
+        // ================================
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("SSH Connect", fontSize = 24.sp, fontWeight = FontWeight.Bold)
 
+            Spacer(Modifier.weight(1f))
+
+            IconButton(
+                onClick = {
+                    val options = ScanOptions().apply {
+                        setPrompt("Scan QR Code SSH")
+                        setBeepEnabled(true)
+                        setOrientationLocked(true)
+                    }
+                    qrLauncher.launch(options)
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.QrCode,
+                    contentDescription = "Scan QR",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        Text("Secure shell connection manager", color = Color.Gray)
         Spacer(Modifier.height(24.dp))
 
         // HOST
@@ -119,6 +161,7 @@ fun ConnectionScreen(
 
         Spacer(Modifier.height(24.dp))
 
+        // tombol connect manual
         Button(
             onClick = { viewModel.connectToServer(context) },
             enabled = !ui.isConnecting,
