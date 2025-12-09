@@ -29,7 +29,11 @@ data class UiState(
     // Upload File
     val isUploading: Boolean = false,
     val uploadProgress: Int = 0,
-    )
+
+    // Move File
+    val showMoveDialog: Boolean = false,
+    val moveTargetFile: String? = null,
+)
 
 enum class ConnectionStatus {
     IDLE,
@@ -48,11 +52,19 @@ sealed class ConnectionUiEvent {
     data class OnPrivateKeySelected(val path: String, val filename: String) : ConnectionUiEvent()
     data class OpenFile(val fileName: String, val context: Context) : ConnectionUiEvent()
     data class UploadFile(val uri: Uri, val context: Context) : ConnectionUiEvent()
+    data class DeleteFile(val fileName: String) : ConnectionUiEvent()
+    data class MoveFile(val fileName: String, val newPath: String) : ConnectionUiEvent()
+    data class ShowMoveDialog(val fileName: String) : ConnectionUiEvent()
+    data class SelectMoveTarget(val targetDir: String) : ConnectionUiEvent()
+    data class LoadDirectoryAt(val path: String) : ConnectionUiEvent()
+    data class UploadStarted(val fileName: String) : ConnectionUiEvent()
 
     object OnConnectClicked : ConnectionUiEvent()
     object OnResetClicked : ConnectionUiEvent()
     object OnChooseKeyClicked : ConnectionUiEvent()
     object CloseFile : ConnectionUiEvent()
+    object DismissMoveDialog : ConnectionUiEvent()
+    object UploadFinished : ConnectionUiEvent()
 
     // Explorer events
     object LoadDirectory : ConnectionUiEvent()
