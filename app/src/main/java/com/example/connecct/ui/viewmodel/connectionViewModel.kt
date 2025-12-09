@@ -28,6 +28,7 @@ import java.io.File
 import java.security.Security
 import com.example.connecct.Conn.UDPProbing
 import com.example.connecct.storage.LoadStorageKey
+import com.example.connecct.ui.state.RemoteFile
 import org.json.JSONObject
 import com.example.connecct.util.QrEndpoint
 import kotlinx.coroutines.flow.asSharedFlow
@@ -56,6 +57,88 @@ class ConnectionViewModel : ViewModel() {
             is ConnectionUiEvent.OnPrivateKeySelected -> selectKey(event.path, event.filename)
             is ConnectionUiEvent.OpenFile -> openFile(event.fileName, event.context)
             is ConnectionUiEvent.UploadFile -> uploadFile(event.uri, event.context)
+
+            is ConnectionUiEvent.DeleteFile -> {
+                val path =
+                    if (_uiState.value.currentPath == "/")
+                        "/${event.fileName}"
+                    else
+                        "${_uiState.value.currentPath}/${event.fileName}"
+
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        transport.deleteRemoteFile(path)
+                        loadDirectory()
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(errorMessage = "Delete failed: ${e.message}") }
+                    }
+                }
+            }
+
+            is ConnectionUiEvent.MoveFile -> {
+                val oldPath =
+                    if (_uiState.value.currentPath == "/")
+                        "/${event.fileName}"
+                    else
+                        "${_uiState.value.currentPath}/${event.fileName}"
+
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        transport.moveRemoteFile(oldPath, event.newPath)
+                        loadDirectory()
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(errorMessage = "Move failed: ${e.message}") }
+                    }
+                }
+            }
+
+            is ConnectionUiEvent.ShowMoveDialog -> {
+                _uiState.update {
+                    it.copy(
+                        showMoveDialog = true,
+                        moveTargetFile = event.fileName
+                    )
+                }
+            }
+
+            is ConnectionUiEvent.DismissMoveDialog -> {
+                _uiState.update {
+                    it.copy(
+                        showMoveDialog = false,
+                        moveTargetFile = null
+                    )
+                }
+            }
+
+            is ConnectionUiEvent.SelectMoveTarget -> {
+                val fileName = _uiState.value.moveTargetFile ?: return
+
+                val oldPath =
+                    if (_uiState.value.currentPath == "/")
+                        "/$fileName"
+                    else
+                        "${_uiState.value.currentPath}/$fileName"
+
+                val newPath =
+                    _uiState.value.currentPath.trimEnd('/') + "/" +
+                            event.targetDir + "/" +
+                            fileName
+
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        transport.moveRemoteFile(oldPath, newPath)
+                        loadDirectory()
+                    } catch (e: Exception) {
+                        _uiState.update {
+                            it.copy(errorMessage = "Move failed: ${e.message}")
+                        }
+                    }
+                }
+
+                _uiState.update {
+                    it.copy(showMoveDialog = false, moveTargetFile = null)
+                }
+            }
 
             ConnectionUiEvent.OnResetClicked -> resetState()
             ConnectionUiEvent.CloseFile -> closeFile()
@@ -198,6 +281,41 @@ class ConnectionViewModel : ViewModel() {
                         errorMessage = e.message ?: "Failed to load directory"
                     )
                 }
+            }
+        }
+    }
+
+    fun loadRootDirectories(onResult: (List<RemoteFile>) -> Unit) {
+        if (!connection.isConnected()) return
+
+        viewModelScope.launch {
+            try {
+                val rootFiles = withContext(Dispatchers.IO) {
+                    transport.listDirectory("/")
+                }.filter { it.isDirectory }
+
+                onResult(rootFiles)
+            } catch (e: Exception) {
+                Log.e("ROOT_DIR", "Failed load root dirs", e)
+            }
+        }
+    }
+
+    fun loadDirectoryAt(
+        path: String,
+        onResult: (List<RemoteFile>) -> Unit
+    ) {
+        if (!connection.isConnected()) return
+
+        viewModelScope.launch {
+            try {
+                val files = withContext(Dispatchers.IO) {
+                    transport.listDirectory(path)
+                }.filter { it.isDirectory }
+
+                onResult(files)
+            } catch (e: Exception) {
+                Log.e("DIR_PICKER", "Gagal load: $path", e)
             }
         }
     }
@@ -455,98 +573,33 @@ class ConnectionViewModel : ViewModel() {
                 _uiState.update { it.copy(isUploading = true, uploadProgress = 0) }
 
                 val resolver = context.contentResolver
-                val input = resolver.openInputStream(uri)
-                    ?: throw Exception("Cannot open file")
-
-                val fileName = resolver.getFileName(uri) ?: "file.bin"
-
-                val remotePath =
-                    if (_uiState.value.currentPath == "/")
-                        "/$fileName"
-                    else
-                        "${_uiState.value.currentPath}/$fileName"
-
-                // Upload via SFTP
-                transport.sftpPut(input, remotePath, context) // <- SFTP UPLOAD
-
-                input.close()
-
-                // Refresh directory after upload
-                loadDirectory()
-
-                _uiState.update { it.copy(isUploading = false, uploadProgress = 100) }
-
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isUploading = false,
-                        errorMessage = "Upload failed: ${e.message}"
-                    )
-                }
-            }
-        }
-    }
-
-    fun uploadFileFromAndroid(uri: Uri, context: Context) {
-        // 🔍 Log kondisi awal
-        val stillConnected = connection.isConnected()
-        Log.d("UPLOAD_FILE", "=== uploadFileFromAndroid() called ===")
-        Log.d("UPLOAD_FILE", "Initial isConnected() = $stillConnected")
-        Log.d("UPLOAD_FILE", "CurrentPath = ${_uiState.value.currentPath}")
-        Log.d("UPLOAD_FILE", "URI = $uri")
-
-        if (!stillConnected) {
-            Log.d("UPLOAD_FILE", "❌ Connection not established. Upload aborted.")
-            _uiState.update { it.copy(errorMessage = "Not connected") }
-            return
-        }
-
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                Log.d("UPLOAD_FILE", "🚀 Starting upload process in IO coroutine...")
-
-                _uiState.update { it.copy(isUploading = true, uploadProgress = 0) }
-
-                val resolver = context.contentResolver
-
-                // 🔍 Cek ukuran file
-                val fileName = resolver.getFileName(uri) ?: "uploaded_file"
-                val fileSize = resolver.getFileSize(uri)
-                Log.d("UPLOAD_FILE", "📄 File name  : $fileName")
-                Log.d("UPLOAD_FILE", "📏 File size  : ${fileSize ?: -1} bytes")
-
                 val inputStream = resolver.openInputStream(uri)
-                    ?: throw Exception("Cannot open InputStream from URI: $uri")
+                    ?: throw Exception("Cannot open InputStream")
 
-                Log.d("UPLOAD_FILE", "📂 InputStream opened from URI: $uri")
+                val fileName = resolver.getFileName(uri) ?: "uploaded_file"
 
                 val basePath = _uiState.value.currentPath.trimEnd('/')
-                Log.d("UPLOAD_FILE", "📁 Current remote directory: '$basePath'")
+                val remotePath = if (basePath.isEmpty())
+                    "/$fileName"
+                else
+                    "$basePath/$fileName"
 
-                val remotePath = if (basePath.isEmpty()) "/$fileName" else "$basePath/$fileName"
-                Log.d("UPLOAD_FILE", "➡️ Upload target path: $remotePath")
+                // ✅ TOTAL SIZE UNTUK HITUNG PERSEN
+                val totalSize = resolver.openFileDescriptor(uri, "r")?.statSize ?: -1
 
-                Log.d("UPLOAD_FILE", "⏫ Upload started... (calling sftpPut)")
-
-                // === UPLOAD FILE ===
-                try {
-                    transport.sftpPut(
-                        input = inputStream,
-                        remotePath = remotePath,
-                        context = context
-                    )
-                    Log.d("UPLOAD_FILE", "📡 sftpPut() finished without throwing.")
-                } finally {
-                    inputStream.close()
-                    Log.d("UPLOAD_FILE", "🔒 InputStream closed.")
+                transport.sftpPutWithProgress(
+                    inputStream = inputStream,
+                    remotePath = remotePath
+                ) { sentBytes ->
+                    if (totalSize > 0) {
+                        val percent = ((sentBytes * 100) / totalSize).toInt()
+                        _uiState.update { it.copy(uploadProgress = percent.coerceIn(0, 100)) }
+                    }
                 }
 
-                // Cek lagi kondisi koneksi setelah upload
-                val afterConnected = connection.isConnected()
-                Log.d("UPLOAD_FILE", "After sftpPut isConnected() = $afterConnected")
+                inputStream.close()
 
                 loadDirectory()
-                Log.d("UPLOAD_FILE", "🔄 Directory reloaded after upload.")
 
                 _uiState.update {
                     it.copy(
@@ -555,32 +608,12 @@ class ConnectionViewModel : ViewModel() {
                     )
                 }
 
-                Log.d("UPLOAD_FILE", "✅ Upload finished successfully.")
-
             } catch (e: Exception) {
-                Log.e(
-                    "UPLOAD_FILE",
-                    "❌ Upload failed: ${e.message} | type=${e::class.java.name}",
-                    e
-                )
-
-                // kalau error terkait koneksi, tandai DISCONNECTED
-                if (e.message?.contains("Not Connected", ignoreCase = true) == true ||
-                    e.message?.contains("Not connected", ignoreCase = true) == true
-                ) {
-                    Log.e("UPLOAD_FILE", "🚨 Detected 'Not connected' error. Forcing disconnect().")
-                    try {
-                        connection.disconnect()
-                    } catch (ex: Exception) {
-                        Log.e("UPLOAD_FILE", "Error while disconnecting after failure: ${ex.message}", ex)
-                    }
-                    updatedStatus(ConnectionStatus.DISCONNECTED)
-                }
-
+                Log.e("UPLOAD", "UPLOAD FAILED", e)
                 _uiState.update {
                     it.copy(
                         isUploading = false,
-                        errorMessage = "Upload failed: ${e.localizedMessage ?: e.toString()}"
+                        errorMessage = "Upload failed: ${e.localizedMessage}"
                     )
                 }
             }
