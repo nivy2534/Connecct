@@ -91,7 +91,10 @@ class ConnectionViewModel : ViewModel() {
         }
     }
 
-    fun connectToServer(context: Context) {
+    fun connectToServer(
+        context: Context,
+        onSuccess: (() -> Unit)? = null
+        ) {
         viewModelScope.launch {
 
             val state = _uiState.value
@@ -144,6 +147,8 @@ class ConnectionViewModel : ViewModel() {
                 _uiState.update { it.copy(currentPath = home) }
 
                 loadDirectory()
+
+                onSuccess?.invoke()
 
             } catch (e: Exception) {
                 handleConnectionError(
@@ -228,6 +233,13 @@ class ConnectionViewModel : ViewModel() {
         val endpoint = parseQR(qrData) ?: run{
             updatedStatus(ConnectionStatus.FAILED)
             return
+        }
+
+        _uiState.update {
+            it.copy(
+                host = endpoint.ip,
+                username = endpoint.username
+            )
         }
 
         viewModelScope.launch {

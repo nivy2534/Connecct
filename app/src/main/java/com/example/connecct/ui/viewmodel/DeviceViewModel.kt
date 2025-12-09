@@ -26,7 +26,11 @@ class DeviceViewModel(
 
     fun removeDevice(device: Device) {
         android.util.Log.d("DEVICE_VM", "Request remove device: ${device.id}")
-        repo.removeDevice(device.id)
+        _devices.removeAll{it.id == device.id}
+
+        viewModelScope.launch {
+            repo.removeDevice(device.id)
+        }
     }
 
     fun addOrUpdateFromQr(endpoint: QrEndpoint, connected: Boolean) {
@@ -43,5 +47,31 @@ class DeviceViewModel(
             "addOrUpdateManual called for $username@$host, connected=$connected"
         )
         repo.addOrUpdateManual(host, username, connected)
+    }
+
+    fun setConnected(id: String, connected: Boolean){
+        android.util.Log.d("DEVICE_VM", "setConnected called for $id, connected=$connected")
+        val idx = _devices.indexOfFirst { it.id == id }
+        if(idx != -1){
+            val old = _devices[idx]
+            _devices[idx] = old.copy(isConnected = connected)
+        }
+
+        viewModelScope.launch{
+            android.util.Log.d(
+                "DEVICE_VM",
+                "setConnected called for $id, connected=$connected"
+            )
+
+            val idx = _devices.indexOfFirst { it.id == id }
+            if(idx != -1){
+                val old = _devices[idx]
+                _devices[idx] = old.copy(isConnected = connected)
+            }
+
+            viewModelScope.launch {
+                repo.setConnected(id, connected)
+            }
+        }
     }
 }

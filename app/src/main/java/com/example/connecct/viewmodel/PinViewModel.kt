@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import com.example.connecct.storage.PinStorage
 import android.util.Log
+import kotlin.math.log
 
 class PinViewModel(private val storage: PinStorage) : ViewModel() {
 
@@ -11,7 +12,7 @@ class PinViewModel(private val storage: PinStorage) : ViewModel() {
     var authenticated = mutableStateOf(false)
 
     // Apakah PIN sudah ada sebelumnya
-    var pinExists = storage.getPin() != null
+    var pinExists = mutableStateOf(storage.getPin() != null)
 
     init {
         Log.d("PIN_VM", "PinViewModel created, pinExists=$pinExists")
@@ -59,6 +60,15 @@ class PinViewModel(private val storage: PinStorage) : ViewModel() {
 
         pinInput.value = ""
         Log.d("PIN_VM", "submitPin() done, authenticated=${authenticated.value}")
+    }
+
+    fun resetPin(){
+        Log.d("PIN_VM", "resetPin() called")
+        storage.deletePin()
+        pinInput.value = ""
+        authenticated.value = false
+        pinExists.value = false
+        Log.d("PIN_VM", "resetPin() done")
     }
 
     // Jika fingerprint sukses

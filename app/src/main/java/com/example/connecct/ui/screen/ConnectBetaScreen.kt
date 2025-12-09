@@ -49,18 +49,26 @@ fun ConnectBetaScreen(
         }
     }
 
-    LaunchedEffect(ui.connectionStatus, ui.host, ui.username, ui.username) {
-        if(ui.connectionStatus == ConnectionStatus.CONNECTED &&
-            ui.host.isNotBlank() &&
-            ui.username.isNotBlank()
-            ){
-            deviceViewModel.addOrUpdateManual(
-                host = ui.host,
-                username = ui.username,
-                connected = true
-            )
+    LaunchedEffect(ui.connectionStatus, ui.host, ui.username) {
+        if (ui.host.isBlank() || ui.username.isBlank()) return@LaunchedEffect
+
+        val id = "${ui.username}@${ui.host}"
+
+        when (ui.connectionStatus) {
+            ConnectionStatus.CONNECTED -> {
+                deviceViewModel.addOrUpdateManual(
+                    host = ui.host,
+                    username = ui.username,
+                    connected = true
+                )
+            }
+            ConnectionStatus.DISCONNECTED -> {
+                deviceViewModel.setConnected(id, false)
+            }
+            else -> Unit
         }
     }
+
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) }

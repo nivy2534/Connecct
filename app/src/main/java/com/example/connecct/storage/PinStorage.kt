@@ -28,4 +28,12 @@ class PinStorage(context: Context) {
         Log.d("PIN_STORAGE", "getPin() result length=${pin?.length ?: 0}")
         return pin
     }
+
+    fun deletePin(){
+        val exists = shared.contains("pin")
+        Log.d("PIN_STORAGE", "deletePin() called, exists=$exists")
+        val pin = shared.getString("pin", null)
+        Log.d("PIN_STORAGE", "deletePin() result length=${pin?.length ?: 0}")
+        shared.edit().remove(pin).apply()
+    }
 }

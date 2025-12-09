@@ -32,7 +32,7 @@ fun PinScreen(
     ) {
 
         Text(
-            text = if (viewModel.pinExists) "Masukkan PIN" else "Buat PIN Baru",
+            text = if (viewModel.pinExists.value) "Masukkan PIN" else "Buat PIN Baru",
             style = MaterialTheme.typography.headlineMedium
         )
 
@@ -101,6 +101,13 @@ fun PinScreen(
 
         Button(onClick = { viewModel.deleteDigit() }) {
             Text("Hapus")
+        }
+
+        if (viewModel.pinExists.value) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = { viewModel.resetPin() }) {
+                Text("Lupa PIN? Hapus & buat baru")
+            }
         }
     }
 }

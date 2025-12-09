@@ -53,7 +53,10 @@ class DeviceRepository(
         storageDevice.saveDevices(current)
         Log.d("DEVICE_REPO", "Saved ${current.size} devices to storage")
     }
-    fun addOrUpdateFromQr(endpoint: QrEndpoint, connected: Boolean) {
+    fun addOrUpdateFromQr(
+        endpoint: QrEndpoint,
+        connected: Boolean
+    ) {
         val id = "${endpoint.username}@${endpoint.ip}"
         addOrUpdateDeviceInternal(
             id = id,
@@ -90,5 +93,28 @@ class DeviceRepository(
     private fun formatTime(): String {
         val formatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
         return formatter.format(java.util.Date())
+    }
+
+    fun setConnected(id: String, connected: Boolean){
+        val current = _devices.value.toMutableList()
+        val idx = current.indexOfFirst { it.id == id }
+
+        if(idx < 0){
+            Log.e("DEVICE_REPO", "Device with id $id not found")
+            return
+        }
+
+        val old = current[idx]
+        val updated = old.copy(
+            isConnected = connected,
+            lastSeen = formatTime(),
+            isOnline = connected
+        )
+
+        current[idx] = updated
+        _devices.value = current
+        storageDevice.saveDevices(current)
+
+        Log.d("DEVICE_REPO", "Saved ${current.size} devices after setConnected")
     }
 }

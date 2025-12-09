@@ -33,6 +33,22 @@ fun ConnectScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
+    LaunchedEffect(uiState.connectionStatus, uiState.host, uiState.username) {
+        if (uiState.host.isBlank() || uiState.username.isBlank()) return@LaunchedEffect
+
+        val id = "${uiState.username}@${uiState.host}"
+
+        when (uiState.connectionStatus) {
+            ConnectionStatus.CONNECTED -> {
+                deviceViewModel.setConnected(id, true)
+            }
+            ConnectionStatus.DISCONNECTED -> {
+                deviceViewModel.setConnected(id, false)
+            }
+            else -> Unit
+        }
+    }
+
     // 📌 ZXing QR Scanner Launcher
     val qrLauncher = rememberLauncherForActivityResult(
         contract = ScanContract()

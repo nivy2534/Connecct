@@ -39,6 +39,8 @@ fun NavGraph(
         factory = DeviceViewModelFactory(context.applicationContext)
     )
 
+    val keyViewModel: KeysViewModel = viewModel()
+
     Scaffold(
         bottomBar = {
             if (currentRoute != "pin") {
@@ -90,7 +92,12 @@ fun NavGraph(
                     factory = DeviceViewModelFactory(context.applicationContext)
                 )
 
-                DeviceScreen(viewModel = deviceViewModel)
+                DeviceScreen(
+                    viewModel = deviceViewModel,
+                    connectionViewModel = connectionViewModel,
+                    keysViewModel = keyViewModel,
+                    navController = navController
+                )
             }
 
             composable("history") {
@@ -98,7 +105,6 @@ fun NavGraph(
             }
 
             composable("settings") {
-                val keyViewModel: KeysViewModel = viewModel()
                 SettingsScreen(
                     themeViewModel = themeViewModel,
                     keyViewModel = keyViewModel,

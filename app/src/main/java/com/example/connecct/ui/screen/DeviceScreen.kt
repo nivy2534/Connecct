@@ -17,18 +17,23 @@ import com.example.connecct.ui.viewmodel.DeviceViewModel
 import com.example.connecct.ui.viewmodel.Device
 import android.util.Log
 import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavController
+import com.example.connecct.ui.state.ConnectionStatus
+import com.example.connecct.ui.state.ConnectionUiEvent
+import com.example.connecct.ui.viewmodel.ConnectionViewModel
 import com.example.connecct.ui.viewmodel.DeviceViewModelFactory
+import com.example.connecct.ui.viewmodel.KeysViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceScreen(
-    viewModel: DeviceViewModel
+    viewModel: DeviceViewModel,
+    connectionViewModel: ConnectionViewModel,
+    keysViewModel: KeysViewModel,
+    navController: NavController
 ) {
     val devices = viewModel.devices
-
-    LaunchedEffect(devices) {
-        Log.d("DEVICE_SCREEN", "DeviceScreen recomposed, devices count = ${devices.size}")
-    }
+    val context = LocalContext.current
 
     var selectedDevice by remember { mutableStateOf<Device?>(null) }
     var showDialog by remember { mutableStateOf(false) }
@@ -65,6 +70,36 @@ fun DeviceScreen(
                             onDelete = {
                                 Log.d("DEVICE_SCREEN", "Removing device: ${device.id}")
                                 viewModel.removeDevice(device)
+                            },
+                            onConnect = {
+                                val ui = connectionViewModel.uiState.value
+
+                                if (ui.privateKeyPath.isBlank()) {
+                                    Log.e("DEVICE_SCREEN", "Private key belum dipilih. Silakan pilih di Settings dulu.")
+
+                                    return@DeviceCard
+                                }
+
+                                connectionViewModel.onEvent(
+                                    ConnectionUiEvent.OnHostChanged(device.host)
+                                )
+                                connectionViewModel.onEvent(
+                                    ConnectionUiEvent.OnUsernameChanged(device.user)
+                                )
+
+                                connectionViewModel.connectToServer(
+                                    context = context,
+                                    onSuccess = {
+                                        navController.navigate("connect_beta") {
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                )
+                            },
+                            onDisconnect = {
+                                Log.d("DEVICE_SCREEN", "Disconnecting device: ${device.id}")
+                                viewModel.setConnected(device.id, false)
+                                connectionViewModel.disconnect()
                             }
                         )
                     }
