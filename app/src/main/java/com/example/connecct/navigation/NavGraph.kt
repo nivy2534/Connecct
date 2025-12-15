@@ -22,6 +22,9 @@ import com.example.connecct.viewmodel.ThemeViewModel
 import com.example.connecct.storage.PinStorage
 import com.example.connecct.viewmodel.PinViewModel
 import com.example.connecct.viewmodel.PinViewModelFactory
+import androidx.activity.compose.BackHandler
+import android.app.Activity
+import androidx.activity.compose.LocalActivity
 
 
 @Composable
@@ -40,6 +43,36 @@ fun NavGraph(
     )
 
     val keyViewModel: KeysViewModel = viewModel()
+
+    val activity= LocalActivity.current
+
+    BackHandler {
+        when(currentRoute){
+            "pin" -> {
+                activity?.finish()
+            }
+
+            "connect", "connect_beta" -> {
+                connectionViewModel.disconnect()
+                activity?.finish()
+            }
+            else -> {
+                val poped = navController.popBackStack(
+                    route = "connect",
+                    inclusive = false
+                )
+
+                if(!poped){
+                    navController.navigate("connect"){
+                        popUpTo(navController.graph.startDestinationId) {
+                            inclusive = true
+                        }
+                        launchSingleTop = true
+                    }
+                }
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -88,14 +121,10 @@ fun NavGraph(
 
             composable("devices") {
                 val context = LocalContext.current
-                val deviceViewModel: DeviceViewModel = viewModel(
-                    factory = DeviceViewModelFactory(context.applicationContext)
-                )
 
                 DeviceScreen(
                     viewModel = deviceViewModel,
                     connectionViewModel = connectionViewModel,
-                    keysViewModel = keyViewModel,
                     navController = navController
                 )
             }

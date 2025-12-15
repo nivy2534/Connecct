@@ -3,15 +3,12 @@ package com.example.connecct.ui.screen
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.connecct.ui.components.DeviceCard
 import com.example.connecct.ui.viewmodel.DeviceViewModel
 import com.example.connecct.ui.viewmodel.Device
@@ -21,15 +18,13 @@ import androidx.navigation.NavController
 import com.example.connecct.ui.state.ConnectionStatus
 import com.example.connecct.ui.state.ConnectionUiEvent
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
-import com.example.connecct.ui.viewmodel.DeviceViewModelFactory
-import com.example.connecct.ui.viewmodel.KeysViewModel
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceScreen(
     viewModel: DeviceViewModel,
     connectionViewModel: ConnectionViewModel,
-    keysViewModel: KeysViewModel,
     navController: NavController
 ) {
     val devices = viewModel.devices
@@ -37,6 +32,33 @@ fun DeviceScreen(
 
     var selectedDevice by remember { mutableStateOf<Device?>(null) }
     var showDialog by remember { mutableStateOf(false) }
+
+    // 🔥 state lokal: apakah connect barusan dipicu dari screen ini?
+    var shouldRedirectAfterConnect by remember { mutableStateOf(false) }
+
+    // observe uiState dari ConnectionViewModel
+    val uiState by connectionViewModel.uiState.collectAsState()
+
+    // 🔁 efek: cuma navigate kalau:
+    // - kita memang sedang "nunggu redirect" (shouldRedirectAfterConnect = true)
+    // - status berubah jadi CONNECTED
+    LaunchedEffect(uiState.connectionStatus, shouldRedirectAfterConnect) {
+        if (shouldRedirectAfterConnect &&
+            uiState.connectionStatus == ConnectionStatus.CONNECTED
+        ) {
+            shouldRedirectAfterConnect = false   // biar cuma sekali
+            navController.navigate("connect_beta") {
+                launchSingleTop = true
+            }
+        }
+
+        // Kalau gagal / disconnect, kita batalin niat redirect
+        if (uiState.connectionStatus == ConnectionStatus.FAILED ||
+            uiState.connectionStatus == ConnectionStatus.DISCONNECTED
+        ) {
+            shouldRedirectAfterConnect = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -71,38 +93,39 @@ fun DeviceScreen(
                                 Log.d("DEVICE_SCREEN", "Removing device: ${device.id}")
                                 viewModel.removeDevice(device)
                             },
-                            onConnect = {
-                                val ui = connectionViewModel.uiState.value
+                            onConnect = { dev ->
+                                // 🚫 JANGAN navigate di sini lagi
+                                // cukup set "niat redirect" + mulai koneksi
 
-                                if (ui.privateKeyPath.isBlank()) {
-                                    Log.e("DEVICE_SCREEN", "Private key belum dipilih. Silakan pilih di Settings dulu.")
-
-                                    return@DeviceCard
-                                }
+                                shouldRedirectAfterConnect = true
 
                                 connectionViewModel.onEvent(
-                                    ConnectionUiEvent.OnHostChanged(device.host)
+                                    ConnectionUiEvent.OnHostChanged(dev.host)
                                 )
                                 connectionViewModel.onEvent(
-                                    ConnectionUiEvent.OnUsernameChanged(device.user)
+                                    ConnectionUiEvent.OnUsernameChanged(dev.user)
                                 )
 
-                                connectionViewModel.connectToServer(
+                                connectionViewModel.connectFromDevice(
                                     context = context,
+                                    host = dev.host,
+                                    username = dev.user,
                                     onSuccess = {
-                                        navController.navigate("connect_beta") {
-                                            launchSingleTop = true
-                                        }
+                                        // cukup update status device,
+                                        // redirect di-handle oleh LaunchedEffect di atas
+                                        viewModel.setConnected(dev.id, true)
                                     }
                                 )
                             },
-                            onDisconnect = {
-                                Log.d("DEVICE_SCREEN", "Disconnecting device: ${device.id}")
-                                viewModel.setConnected(device.id, false)
+                            onDisconnect = { dev ->
+                                Log.d("DEVICE_SCREEN", "Disconnecting device: ${dev.id}")
+                                shouldRedirectAfterConnect = false  // kalau sempat connect → batalin niat redirect
+                                viewModel.setConnected(dev.id, false)
                                 connectionViewModel.disconnect()
                             }
                         )
                     }
+
                 }
             }
 
@@ -136,6 +159,7 @@ fun DeviceScreen(
         }
     }
 }
+
 
 @Composable
 fun EmptyState() {

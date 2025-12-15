@@ -44,6 +44,7 @@ class ConnectionViewModel : ViewModel() {
     private val transport = Transport(connection)
 
     private val _deviceFromQr = kotlinx.coroutines.flow.MutableSharedFlow<QrEndpoint>(
+        replay = 1,
         extraBufferCapacity = 1
     )
 
@@ -174,6 +175,10 @@ class ConnectionViewModel : ViewModel() {
         }
     }
 
+    fun clearLastQrDevice() {
+        _deviceFromQr.resetReplayCache()
+    }
+
     fun connectToServer(
         context: Context,
         onSuccess: (() -> Unit)? = null
@@ -242,8 +247,79 @@ class ConnectionViewModel : ViewModel() {
             }
         }
     }
+    fun connectFromDevice(
+        context: Context,
+        host: String,
+        username: String,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    host = host,
+                    username = username,
+                    isConnecting = true,
+                    connectionStatus = ConnectionStatus.CONNECTING,
+                    status = "Connecting...",
+                    errorMessage = ""
+                )
+            }
+
+            try {
+                if (Security.getProvider("BC") == null) {
+                    Security.addProvider(BouncyCastleProvider())
+                }
+                val key = loadKey(context) ?: run {
+                    handleConnectionError(
+                        message = "Public key tidak ditemukan. Buat atau pilih key dulu di pengaturan.",
+                        status = ConnectionStatus.FAILED,
+                        exception = IllegalStateException("No SSH key in storage")
+                    )
+                    return@launch
+                }
+
+                val passphrase = _uiState.value.passphrase
+
+                withContext(Dispatchers.IO) {
+                    connection.connect(
+                        context = context,
+                        host = host,
+                        username = username,
+                        privateKeyPath = key.privateFile,
+                        passphrase = passphrase
+                    )
+                }
+
+                // ✅ Update status sukses
+                _uiState.update {
+                    it.copy(
+                        isConnecting = false,
+                        connectionStatus = ConnectionStatus.CONNECTED,
+                        status = "Connected"
+                    )
+                }
+
+                // Ambil home dir & load file list
+                val home = withContext(Dispatchers.IO) {
+                    transport.getHomeDirectory()
+                }
+                _uiState.update { it.copy(currentPath = home) }
+                loadDirectory()
+
+                onSuccess?.invoke()
+
+            } catch (e: Exception) {
+                handleConnectionError(
+                    "Failed to connect: ${e::class.simpleName}",
+                    ConnectionStatus.FAILED,
+                    e
+                )
+            }
+        }
+    }
 
     private fun fail(message: String) {
+        Log.e("FAILED", message)
         _uiState.update {
             it.copy(
                 isConnecting = false,

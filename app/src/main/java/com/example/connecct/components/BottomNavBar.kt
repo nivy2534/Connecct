@@ -36,7 +36,15 @@ fun BottomNavBar(navController: NavController) {
         items.forEach { item ->
             NavigationBarItem(
                 selected = currentRoute == item.route,
-                onClick = { navController.navigate(item.route) },
+                onClick = {
+                    navController.navigate(item.route) {
+                        popUpTo("connect") {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
                 icon = { Icon(item.icon, contentDescription = item.label) },
                 label = { Text(item.label) }
             )
