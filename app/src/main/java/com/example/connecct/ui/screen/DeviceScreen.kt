@@ -19,7 +19,6 @@ import com.example.connecct.ui.state.ConnectionStatus
 import com.example.connecct.ui.state.ConnectionUiEvent
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
 
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceScreen(

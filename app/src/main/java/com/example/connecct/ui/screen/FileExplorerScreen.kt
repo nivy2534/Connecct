@@ -28,6 +28,9 @@ import com.example.connecct.ui.state.OpenedFile
 import com.example.connecct.ui.state.RemoteFile
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
 import androidx.compose.material.icons.filled.ArrowBack
+import com.example.connecct.util.TransferTask
+import com.example.connecct.util.TransferType
+import com.example.connecct.util.getFilename
 
 
 @Composable
@@ -62,7 +65,13 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        if (uri != null) viewModel.uploadFile(uri, context)
+        if (uri != null) viewModel.enqueue(
+            TransferTask(
+                type = TransferType.UPLOAD,
+                fileName = context.contentResolver.getFilename(uri) ?: "uploadedFile",
+                localUri = uri,
+            )
+        )
     }
 
     // ================= SORTED FILES (🔥 INI INTINYA) =================

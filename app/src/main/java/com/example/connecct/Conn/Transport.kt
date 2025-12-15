@@ -121,45 +121,6 @@ class Transport(private val connection: Connection) {
         }
     }
 
-    fun downloadFile(
-        remotePath: String,
-        localFile: File,
-        onProgress: ((Long) -> Unit)? = null
-    ) {
-        val ssh = connection.getClient()
-            ?: throw IllegalStateException("Not Connected")
-
-        val sftp = ssh.newSFTPClient()
-        val remoteFile = sftp.open(remotePath)
-
-        try {
-            val totalSize = sftp.stat(remotePath).size ?: 0L
-            val buffer = ByteArray(16 * 1024)
-
-            var offset = 0L
-            var downloaded = 0L
-
-            localFile.outputStream().use { output ->
-                while (true) {
-                    val read = remoteFile.read(offset, buffer, 0, buffer.size)
-                    if (read <= 0) break
-
-                    output.write(buffer, 0, read)
-                    offset += read
-                    downloaded += read
-
-                    if (totalSize > 0) {
-                        val percent = (downloaded * 100) / totalSize
-                        onProgress?.invoke(percent)
-                    }
-                }
-            }
-        } finally {
-            remoteFile.close()
-            sftp.close()
-        }
-    }
-
     fun downloadFileToStream(
         remotePath: String,
         outputStream: OutputStream,

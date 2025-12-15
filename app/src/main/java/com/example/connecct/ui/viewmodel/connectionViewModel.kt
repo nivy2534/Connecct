@@ -35,8 +35,16 @@ import com.example.connecct.storage.LoadStorageKey
 import com.example.connecct.ui.state.RemoteFile
 import org.json.JSONObject
 import com.example.connecct.util.QrEndpoint
+import com.example.connecct.util.TransferStatus
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import java.io.InputStream
+import com.example.connecct.util.TransferTask
+import com.example.connecct.util.TransferType
+import java.util.concurrent.TransferQueue
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+
 
 class ConnectionViewModel : ViewModel() {
 
@@ -53,6 +61,14 @@ class ConnectionViewModel : ViewModel() {
     )
 
     val deviceFromQr = _deviceFromQr.asSharedFlow()
+
+    private var appContext: Context? = null
+
+    private val _transferQueue = MutableStateFlow<List<TransferTask>>(emptyList())
+
+    val transerQueue = _transferQueue.asStateFlow()
+
+    private var isProcessingQueue = false
 
     fun onEvent(event: ConnectionUiEvent) {
         when (event) {
@@ -196,21 +212,6 @@ class ConnectionViewModel : ViewModel() {
 
     private fun updatePassphrase(passphrase: String) {
         _uiState.update { it.copy(passphrase = passphrase) }
-    }
-
-    // ⛔ HAPUS filesystem
-    private fun updatePrivateKey(path: String, filename: String) {
-        _uiState.update {
-            it.copy(
-                privateKeyPath = path,
-                filename = filename,
-                isKeySelected = true
-            )
-        }
-    }
-
-    fun clearLastQrDevice() {
-        _deviceFromQr.resetReplayCache()
     }
 
     fun connectToServer(
@@ -391,22 +392,6 @@ class ConnectionViewModel : ViewModel() {
                         errorMessage = e.message ?: "Failed to load directory"
                     )
                 }
-            }
-        }
-    }
-
-    fun loadRootDirectories(onResult: (List<RemoteFile>) -> Unit) {
-        if (!connection.isConnected()) return
-
-        viewModelScope.launch {
-            try {
-                val rootFiles = withContext(Dispatchers.IO) {
-                    transport.listDirectory("/")
-                }.filter { it.isDirectory }
-
-                onResult(rootFiles)
-            } catch (e: Exception) {
-                Log.e("ROOT_DIR", "Failed load root dirs", e)
             }
         }
     }
@@ -678,6 +663,10 @@ class ConnectionViewModel : ViewModel() {
             return
         }
 
+        if(appContext == null){
+            appContext = context.applicationContext
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _uiState.update { it.copy(isUploading = true, uploadProgress = 0) }
@@ -725,65 +714,6 @@ class ConnectionViewModel : ViewModel() {
                         isUploading = false,
                         errorMessage = "Upload failed: ${e.localizedMessage}"
                     )
-                }
-            }
-        }
-    }
-
-    fun downloadFile(file: RemoteFile, context: Context) {
-        if (!connection.isConnected()) return
-
-        val basePath = _uiState.value.currentPath
-        val remotePath =
-            if (basePath == "/") "/${file.name}"
-            else "${basePath.trimEnd('/')}/${file.name}"
-
-        val downloadDir = File(
-            context.getExternalFilesDir(null),
-            "downloads"
-        )
-        if (!downloadDir.exists()) downloadDir.mkdirs()
-
-        val localFile = File(downloadDir, file.name)
-
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                // 🔥 AUTO SWITCH
-                if (file.size <= 5 * 1024 * 1024) {
-                    // SMALL FILE
-                    val bytes = transport.readFileBytes(remotePath)
-                    localFile.writeBytes(bytes)
-
-                } else {
-                    // LARGE FILE
-                    _uiState.update { it.copy(isDownloading = true, downloadProgress = 0) }
-
-                    transport.downloadFile(remotePath, localFile) { percent ->
-                        _uiState.update {
-                            it.copy(downloadProgress = percent.toInt())
-                        }
-                    }
-
-                    _uiState.update { it.copy(isDownloading = false) }
-                }
-
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        "Downloaded: ${localFile.absolutePath}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isDownloading = false) }
-
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        "Download failed: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
                 }
             }
         }
@@ -902,6 +832,88 @@ class ConnectionViewModel : ViewModel() {
         return withContext(Dispatchers.IO){
             LoadStorageKey(context).loadKeys().firstOrNull()
         }
+    }
+
+    fun enqueue(task: TransferTask){
+        _transferQueue.update { it + task }
+        processQueue()
+    }
+
+    private fun processQueue(){
+        if (isProcessingQueue) return
+
+        val next = _transferQueue.value.firstOrNull(){
+            it.status == TransferStatus.QUEUED
+        } ?: return
+
+        isProcessingQueue = true
+
+        updateTask(next.id){
+            it.copy(status = TransferStatus.IN_PROGRESS)
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try{
+                when(next.type){
+                    TransferType.UPLOAD -> runUpload(next, appContext)
+                    TransferType.DOWNLOAD -> runDownload(next)
+                }
+
+                updateTask(next.id){
+                    it.copy(status = TransferStatus.COMPLETED, progress = 100)
+                }
+            }catch(e: Exception){
+                updateTask(next.id){
+                    it.copy(status = TransferStatus.FAILED, error = e.message)
+                }
+            }finally {
+                isProcessingQueue = false
+                processQueue()
+            }
+        }
+    }
+
+    private fun updateTask(id: String, transform: (TransferTask) -> TransferTask){
+                _transferQueue.update{
+                    it.map{
+                        if(it.id == id) transform(it) else it
+                    }
+                }
+    }
+
+    private suspend fun runUpload(task: TransferTask, context: Context? = null){
+        val uri = task.localUri ?: error("Upload task missing uri")
+
+        val ctx = appContext ?: error("App context not initialized")
+
+        val input = ctx.contentResolver.openInputStream(uri) ?: error("Failed to open input stream")
+
+        transport.sftpPutWithProgress(
+            inputStream = input,
+            remotePath = task.remotePath
+        ){sent ->
+            updateTask(task.id){
+                it.copy(progress = sent)
+            }
+        }
+
+        input.close()
+    }
+
+    private suspend fun runDownload(task: TransferTask){
+        val ctx = appContext ?: error("App context not initialized")
+        val resolver = ctx.contentResolver
+
+        resolver.openOutputStream(Uri.parse(task.remotePath))?.use {output ->
+            transport.downloadFileToStream(
+                remotePath = task.remotePath,
+                outputStream = output
+            ){percet ->
+                updateTask(task.id){
+                    it.copy(progress = percet)
+                }
+            }
+        } ?: error("Failed to open output stream")
     }
 
     fun disconnect(){
