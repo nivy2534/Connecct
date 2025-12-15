@@ -11,6 +11,7 @@ import net.schmizz.sshj.xfer.TransferListener
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
+import java.io.OutputStream
 
 class Transport(private val connection: Connection) {
 
@@ -120,6 +121,86 @@ class Transport(private val connection: Connection) {
         }
     }
 
+    fun downloadFile(
+        remotePath: String,
+        localFile: File,
+        onProgress: ((Long) -> Unit)? = null
+    ) {
+        val ssh = connection.getClient()
+            ?: throw IllegalStateException("Not Connected")
+
+        val sftp = ssh.newSFTPClient()
+        val remoteFile = sftp.open(remotePath)
+
+        try {
+            val totalSize = sftp.stat(remotePath).size ?: 0L
+            val buffer = ByteArray(16 * 1024)
+
+            var offset = 0L
+            var downloaded = 0L
+
+            localFile.outputStream().use { output ->
+                while (true) {
+                    val read = remoteFile.read(offset, buffer, 0, buffer.size)
+                    if (read <= 0) break
+
+                    output.write(buffer, 0, read)
+                    offset += read
+                    downloaded += read
+
+                    if (totalSize > 0) {
+                        val percent = (downloaded * 100) / totalSize
+                        onProgress?.invoke(percent)
+                    }
+                }
+            }
+        } finally {
+            remoteFile.close()
+            sftp.close()
+        }
+    }
+
+    fun downloadFileToStream(
+        remotePath: String,
+        outputStream: OutputStream,
+        onProgress: ((Long) -> Unit)? = null
+    ) {
+        val ssh = connection.getClient()
+            ?: throw IllegalStateException("Not Connected")
+
+        val sftp = ssh.newSFTPClient()
+
+        val remoteFile = sftp.open(remotePath)
+
+        try {
+            val totalSize = sftp.stat(remotePath).size ?: 0L
+            val buffer = ByteArray(32 * 1024)
+
+            var offset = 0L
+            var downloaded = 0L
+
+            while (true) {
+                val read = remoteFile.read(offset, buffer, 0, buffer.size)
+                if (read <= 0) break
+
+                outputStream.write(buffer, 0, read)
+                offset += read
+                downloaded += read
+
+                if (totalSize > 0) {
+                    val percent = (downloaded * 100) / totalSize
+                    onProgress?.invoke(percent)
+                }
+            }
+
+            outputStream.flush()
+
+        } finally {
+            remoteFile.close()
+            sftp.close()
+        }
+    }
+
     fun sftpPutWithProgress(
         inputStream: InputStream,
         remotePath: String,
@@ -128,7 +209,6 @@ class Transport(private val connection: Connection) {
         val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
         val sftp = ssh.newSFTPClient()
 
-        // ✅ INI CARA YANG BENAR UNTUK DAPAT OUTPUT STREAM DI SSHJ
         val remoteFile = sftp.open(
             remotePath,
             setOf(

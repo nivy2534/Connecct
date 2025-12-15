@@ -27,6 +27,8 @@ import com.example.connecct.ui.state.FolderNode
 import com.example.connecct.ui.state.OpenedFile
 import com.example.connecct.ui.state.RemoteFile
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
+import androidx.compose.material.icons.filled.ArrowBack
+
 
 @Composable
 fun FileExplorerScreen(viewModel: ConnectionViewModel) {
@@ -39,7 +41,7 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
     var moveTargetFile by remember { mutableStateOf<RemoteFile?>(null) }
     var selectedTargetDir by remember { mutableStateOf<FolderNode?>(null) }
 
-    // ✅ TREE ROOT
+    // ================= TREE ROOT =================
     var folderTree by remember {
         mutableStateOf(
             listOf(
@@ -49,74 +51,148 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
         )
     }
 
-    // ================= LOAD =================
+    // ================= LOAD ROOT =================
     LaunchedEffect(state.connectionStatus) {
         if (state.connectionStatus == ConnectionStatus.CONNECTED) {
             viewModel.onEvent(ConnectionUiEvent.LoadDirectory)
         }
     }
 
+    // ================= FILE PICKER =================
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) viewModel.uploadFile(uri, context)
     }
 
+    // ================= SORTED FILES (🔥 INI INTINYA) =================
+    val sortedFiles = remember(state.remoteFiles) {
+        state.remoteFiles.sortedWith(
+            compareBy<RemoteFile>(
+                { !it.isDirectory },
+                { it.name.lowercase() }
+            )
+        )
+    }
+
     // ================= MAIN UI =================
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // ================= TOP BAR =================
+        val rootPaths = listOf("/", "C:/", "E:/")
+        val showBackButton = state.currentPath !in rootPaths
 
-            Button(onClick = {
-                viewModel.onEvent(ConnectionUiEvent.NavigateUp)
-            }) { Text("Up") }
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
 
-            Spacer(Modifier.width(12.dp))
+            if (showBackButton) {
+                IconButton(
+                    onClick = {
+                        viewModel.onEvent(ConnectionUiEvent.NavigateUp)
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Navigate up"
+                    )
+                }
 
-            Text("Path: ${state.currentPath}", modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(12.dp))
+            }
 
-            IconButton(onClick = {
-                viewModel.onEvent(ConnectionUiEvent.LoadDirectory)
-            }) { Icon(Icons.Default.Refresh, null) }
+            Text(
+                text = "Path: ${state.currentPath}",
+                modifier = Modifier.weight(1f),
+                maxLines = 1
+            )
 
-            IconButton(onClick = { launcher.launch("*/*") }) {
-                Icon(Icons.Default.Add, null)
+            IconButton(
+                onClick = {
+                    viewModel.onEvent(ConnectionUiEvent.LoadDirectory)
+                }
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+            }
+
+            IconButton(
+                onClick = { launcher.launch("*/*") }
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Upload")
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
+        // ================= LOADING =================
         if (state.isLoadingDirectory) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
                 CircularProgressIndicator()
             }
             return
         }
 
+        // ================= FILE LIST =================
         LazyColumn {
-            items(state.remoteFiles, key = { it.name }) { file ->
+            items(sortedFiles, key = { it.name }) { file ->
+
                 RemoteFileItem(
                     file = file,
+
                     onClick = {
-                        if (file.isDirectory)
-                            viewModel.onEvent(ConnectionUiEvent.NavigateTo(file.name))
-                        else
-                            viewModel.onEvent(ConnectionUiEvent.OpenFile(file.name, context))
+                        if (file.isDirectory) {
+                            viewModel.onEvent(
+                                ConnectionUiEvent.NavigateTo(file.name)
+                            )
+                        } else {
+                            viewModel.onEvent(
+                                ConnectionUiEvent.OpenFile(file.name, context)
+                            )
+                        }
                     },
+
                     onDelete = {
-                        viewModel.onEvent(ConnectionUiEvent.DeleteFile(file.name))
+                        viewModel.onEvent(
+                            ConnectionUiEvent.DeleteFile(file.name)
+                        )
                     },
+
                     onMove = {
                         moveTargetFile = file
                         selectedTargetDir = null
                         showMoveDialog = true
+                    },
+
+                    onDownload = { remoteFile ->
+                        viewModel.onEvent(
+                            ConnectionUiEvent.DownloadFile(
+                                file = remoteFile,
+                                context = context
+                            )
+                        )
+                    },
+
+                    onRename = { oldName, newName ->
+                        viewModel.onEvent(
+                            ConnectionUiEvent.RenameFile(
+                                oldName = oldName,
+                                newName = newName
+                            )
+                        )
                     }
                 )
             }
         }
     }
 
-    // ================= MOVE POPUP TREE =================
+    // ================= MOVE DIALOG =================
     if (showMoveDialog && moveTargetFile != null) {
         AlertDialog(
             onDismissRequest = {
@@ -138,10 +214,10 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
 
                                         val newChildren = result
                                             .filter { it.isDirectory }
-                                            .map { rf ->
+                                            .map {
                                                 FolderNode(
-                                                    name = rf.name,
-                                                    fullPath = clicked.fullPath.trimEnd('/') + "/" + rf.name
+                                                    name = it.name,
+                                                    fullPath = clicked.fullPath.trimEnd('/') + "/" + it.name
                                                 )
                                             }
 
@@ -162,10 +238,6 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
             confirmButton = {
                 Button(
                     enabled = selectedTargetDir != null,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTargetDir != null)
-                            Color(0xFF4CAF50) else Color.Gray
-                    ),
                     onClick = {
                         val targetPath =
                             selectedTargetDir!!.fullPath.trimEnd('/') + "/" +
@@ -182,29 +254,35 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
                         moveTargetFile = null
                         selectedTargetDir = null
                     }
-                ) { Text("Konfirmasi") }
+                ) {
+                    Text("Konfirmasi")
+                }
             },
 
             dismissButton = {
-                TextButton(onClick = {
-                    showMoveDialog = false
-                    moveTargetFile = null
-                    selectedTargetDir = null
-                }) { Text("Batal") }
+                TextButton(
+                    onClick = {
+                        showMoveDialog = false
+                        moveTargetFile = null
+                        selectedTargetDir = null
+                    }
+                ) {
+                    Text("Batal")
+                }
             }
         )
     }
 
-    // ================= UPLOAD PROGRESS POPUP =================
+    // ================= UPLOAD PROGRESS =================
     if (state.isUploading) {
         AlertDialog(
-            onDismissRequest = {}, // ❌ tidak bisa ditutup manual
+            onDismissRequest = {},
             confirmButton = {},
             title = { Text("Uploading...") },
             text = {
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
 
                     LinearProgressIndicator(
@@ -251,10 +329,15 @@ fun RemoteFileItem(
     file: RemoteFile,
     onClick: () -> Unit,
     onDelete: () -> Unit,
-    onMove: () -> Unit
+    onMove: () -> Unit,
+    onDownload: (RemoteFile) -> Unit,
+    onRename: (oldName: String, newName: String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf(file.name) }
 
+    // ================= ROW UTAMA =================
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -278,7 +361,10 @@ fun RemoteFileItem(
                 Icon(Icons.Default.MoreVert, contentDescription = "Menu")
             }
 
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
 
                 DropdownMenuItem(
                     text = { Text("Delete") },
@@ -289,14 +375,63 @@ fun RemoteFileItem(
                 )
 
                 DropdownMenuItem(
+                    text = { Text("Download") },
+                    onClick = {
+                        expanded = false
+                        onDownload(file)
+                    }
+                )
+
+                DropdownMenuItem(
                     text = { Text("Move") },
                     onClick = {
                         expanded = false
                         onMove()
                     }
                 )
+
+                DropdownMenuItem(
+                    text = { Text("Rename") },
+                    onClick = {
+                        expanded = false
+                        newName = file.name   // 🔥 reset setiap buka dialog
+                        showRenameDialog = true
+                    }
+                )
             }
         }
+    }
+
+    // ================= RENAME DIALOG =================
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename File") },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("New name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = newName.isNotBlank() && newName != file.name,
+                    onClick = {
+                        onRename(file.name, newName)
+                        showRenameDialog = false
+                    }
+                ) {
+                    Text("Rename")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

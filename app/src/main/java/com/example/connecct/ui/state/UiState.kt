@@ -33,6 +33,10 @@ data class UiState(
     // Move File
     val showMoveDialog: Boolean = false,
     val moveTargetFile: String? = null,
+
+    // Download File
+    val isDownloading: Boolean = false,
+    val downloadProgress: Int = 0,
 )
 
 enum class ConnectionStatus {
@@ -56,6 +60,9 @@ sealed class ConnectionUiEvent {
     data class MoveFile(val fileName: String, val newPath: String) : ConnectionUiEvent()
     data class ShowMoveDialog(val fileName: String) : ConnectionUiEvent()
     data class SelectMoveTarget(val targetDir: String) : ConnectionUiEvent()
+    data class DownloadFile(val file: RemoteFile, val context: Context) : ConnectionUiEvent()
+    data class RenameFile(val oldName: String, val newName: String) : ConnectionUiEvent()
+
     data class LoadDirectoryAt(val path: String) : ConnectionUiEvent()
     data class UploadStarted(val fileName: String) : ConnectionUiEvent()
 

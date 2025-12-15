@@ -1,11 +1,15 @@
 package com.example.connecct.ui.viewmodel
 
 import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -91,6 +95,36 @@ class ConnectionViewModel : ViewModel() {
                         _uiState.update { it.copy(errorMessage = "Move failed: ${e.message}") }
                     }
                 }
+            }
+
+            is ConnectionUiEvent.RenameFile -> {
+                val basePath = _uiState.value.currentPath
+
+                val oldPath =
+                    if (basePath == "/") "/${event.oldName}"
+                    else "${basePath.trimEnd('/')}/${event.oldName}"
+
+                val newPath =
+                    if (basePath == "/") "/${event.newName}"
+                    else "${basePath.trimEnd('/')}/${event.newName}"
+
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        transport.moveRemoteFile(oldPath, newPath)
+                        loadDirectory()
+                    } catch (e: Exception) {
+                        _uiState.update {
+                            it.copy(errorMessage = "Rename failed: ${e.message}")
+                        }
+                    }
+                }
+            }
+
+            is ConnectionUiEvent.DownloadFile -> {
+                downloadFilePublic(
+                    file = event.file,
+                    context = event.context
+                )
             }
 
             is ConnectionUiEvent.ShowMoveDialog -> {
@@ -696,6 +730,134 @@ class ConnectionViewModel : ViewModel() {
         }
     }
 
+    fun downloadFile(file: RemoteFile, context: Context) {
+        if (!connection.isConnected()) return
+
+        val basePath = _uiState.value.currentPath
+        val remotePath =
+            if (basePath == "/") "/${file.name}"
+            else "${basePath.trimEnd('/')}/${file.name}"
+
+        val downloadDir = File(
+            context.getExternalFilesDir(null),
+            "downloads"
+        )
+        if (!downloadDir.exists()) downloadDir.mkdirs()
+
+        val localFile = File(downloadDir, file.name)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 🔥 AUTO SWITCH
+                if (file.size <= 5 * 1024 * 1024) {
+                    // SMALL FILE
+                    val bytes = transport.readFileBytes(remotePath)
+                    localFile.writeBytes(bytes)
+
+                } else {
+                    // LARGE FILE
+                    _uiState.update { it.copy(isDownloading = true, downloadProgress = 0) }
+
+                    transport.downloadFile(remotePath, localFile) { percent ->
+                        _uiState.update {
+                            it.copy(downloadProgress = percent.toInt())
+                        }
+                    }
+
+                    _uiState.update { it.copy(isDownloading = false) }
+                }
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        context,
+                        "Downloaded: ${localFile.absolutePath}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isDownloading = false) }
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        context,
+                        "Download failed: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    fun downloadFilePublic(
+        file: RemoteFile,
+        context: Context
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val resolver = context.contentResolver
+
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, getMimeType(file.name))
+
+                    // 🔥 ini kunci agar masuk folder Download
+                    put(
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_DOWNLOADS
+                    )
+
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+
+                val uri = resolver.insert(
+                    MediaStore.Files.getContentUri("external"),
+                    values
+                ) ?: throw IllegalStateException("Failed to create MediaStore entry")
+
+                resolver.openOutputStream(uri)?.use { output ->
+                    transport.downloadFileToStream(
+                        remotePath = "${_uiState.value.currentPath}/${file.name}",
+                        outputStream = output
+                    )
+                }
+
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        context,
+                        "Downloaded to Downloads/${file.name}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        context,
+                        "Download failed: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    fun getMimeType(name: String): String {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "mp4" -> "video/mp4"
+            "m4a" -> "audio/mp4"
+            "mp3" -> "audio/mpeg"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "pdf" -> "application/pdf"
+            else -> "application/octet-stream"
+        }
+    }
 
     private fun ContentResolver.getFileName(uri: Uri): String? {
         val cursor = query(uri, null, null, null, null) ?: return null
