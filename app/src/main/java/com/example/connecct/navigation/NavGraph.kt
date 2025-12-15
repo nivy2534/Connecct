@@ -47,28 +47,27 @@ fun NavGraph(
     val activity= LocalActivity.current
 
     BackHandler {
-        when(currentRoute){
+        when (currentRoute) {
+
             "pin" -> {
                 activity?.finish()
             }
 
             "connect", "connect_beta" -> {
+                // BACK fisik = disconnect lalu balik ke Devices
                 connectionViewModel.disconnect()
-                activity?.finish()
-            }
-            else -> {
-                val poped = navController.popBackStack(
-                    route = "connect",
-                    inclusive = false
-                )
 
-                if(!poped){
-                    navController.navigate("connect"){
-                        popUpTo(navController.graph.startDestinationId) {
-                            inclusive = true
-                        }
-                        launchSingleTop = true
+                navController.navigate("devices") {
+                    popUpTo(navController.graph.startDestinationId) {
+                        inclusive = false
                     }
+                    launchSingleTop = true
+                }
+            }
+
+            else -> {
+                if (!navController.popBackStack()) {
+                    activity?.finish()
                 }
             }
         }

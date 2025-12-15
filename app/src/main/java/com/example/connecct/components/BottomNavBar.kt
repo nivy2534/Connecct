@@ -21,6 +21,7 @@ data class BottomNavItem(
 
 @Composable
 fun BottomNavBar(navController: NavController) {
+
     val items = listOf(
         BottomNavItem("Connect", "connect", Icons.Filled.Lan),
         BottomNavItem("Connect Beta", "connect_beta", Icons.Default.Science),
@@ -29,16 +30,16 @@ fun BottomNavBar(navController: NavController) {
         BottomNavItem("Settings", "settings", Icons.Filled.Settings),
     )
 
-    NavigationBar {
-        val navBackStackEntry by navController.currentBackStackEntryAsState()
-        val currentRoute = navBackStackEntry?.destination?.route
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
 
+    NavigationBar {
         items.forEach { item ->
             NavigationBarItem(
                 selected = currentRoute == item.route,
                 onClick = {
                     navController.navigate(item.route) {
-                        popUpTo("connect") {
+                        popUpTo(navController.graph.startDestinationId) {
                             saveState = true
                         }
                         launchSingleTop = true

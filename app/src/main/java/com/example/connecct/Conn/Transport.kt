@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import com.example.connecct.ui.state.RemoteFile
 import net.schmizz.sshj.common.StreamCopier
+import net.schmizz.sshj.sftp.OpenMode
 import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.xfer.TransferListener
 import java.io.ByteArrayOutputStream
@@ -99,38 +100,67 @@ class Transport(private val connection: Connection) {
         }
     }
 
-    fun deleteRemoteFile(path: String) {
-        val ssh = connection.getClient() ?: return
-        val sftp = ssh.newSFTPClient()
+    private fun downloadInternal(
+        remotePath: String,
+        outputStream: OutputStream,
+        onBytesDownloaded: ((downloaded: Long, total: Long) -> Unit)? = null
+    ) {
+        val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
 
-        try {
-            sftp.rm(path)
-        } finally {
-            sftp.close()
+        ssh.newSFTPClient().use { sftp ->
+            val totalSize = sftp.stat(remotePath).size ?: 0L
+
+            sftp.open(remotePath).use { remoteFile ->
+                val buffer = ByteArray(32 * 1024)
+                var offset = 0L
+                var downloaded = 0L
+
+                while (true) {
+                    val read = remoteFile.read(offset, buffer, 0, buffer.size)
+                    if (read <= 0) break
+
+                    outputStream.write(buffer, 0, read)
+                    offset += read
+                    downloaded += read
+
+                    onBytesDownloaded?.invoke(downloaded, totalSize)
+                }
+
+                outputStream.flush()
+            }
         }
     }
 
-    fun moveRemoteFile(oldPath: String, newPath: String) {
-        val ssh = connection.getClient() ?: return
-        val sftp = ssh.newSFTPClient()
-
-        try {
-            sftp.rename(oldPath, newPath)
-        } finally {
-            sftp.close()
+    // ----------------------------------------------------------------------
+    // DOWNLOAD TO FILE
+    // ----------------------------------------------------------------------
+    fun downloadFile(
+        remotePath: String,
+        localFile: File,
+        onProgress: ((Long) -> Unit)? = null
+    ) {
+        localFile.outputStream().use { output ->
+            downloadInternal(remotePath, output) { downloaded, total ->
+                if (total > 0) {
+                    val percent = (downloaded * 100) / total
+                    onProgress?.invoke(percent)
+                }
+            }
         }
     }
 
+    // ----------------------------------------------------------------------
+    // DOWNLOAD TO STREAM
+    // ----------------------------------------------------------------------
     fun downloadFileToStream(
         remotePath: String,
         outputStream: OutputStream,
-        onProgress: ((Long) -> Unit)? = null
+        onProgress: ((Long, Long) -> Unit)? = null
     ) {
         val ssh = connection.getClient()
             ?: throw IllegalStateException("Not Connected")
 
         val sftp = ssh.newSFTPClient()
-
         val remoteFile = sftp.open(remotePath)
 
         try {
@@ -148,10 +178,7 @@ class Transport(private val connection: Connection) {
                 offset += read
                 downloaded += read
 
-                if (totalSize > 0) {
-                    val percent = (downloaded * 100) / totalSize
-                    onProgress?.invoke(percent)
-                }
+                onProgress?.invoke(downloaded, totalSize)
             }
 
             outputStream.flush()
@@ -162,60 +189,101 @@ class Transport(private val connection: Connection) {
         }
     }
 
-    fun sftpPutWithProgress(
-        inputStream: InputStream,
-        remotePath: String,
-        onProgress: (Long) -> Unit
-    ) {
-        val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
+    fun createRemoteDirectory(parentPath: String, folderName: String) {
+        val ssh = connection.getClient()
+
+        if (ssh == null || !ssh.isConnected) {
+            Log.e("CREATE_FOLDER", "SSH not connected, abort create folder")
+            return
+        }
+
         val sftp = ssh.newSFTPClient()
 
-        val remoteFile = sftp.open(
-            remotePath,
-            setOf(
-                net.schmizz.sshj.sftp.OpenMode.WRITE,
-                net.schmizz.sshj.sftp.OpenMode.CREAT,
-                net.schmizz.sshj.sftp.OpenMode.TRUNC
-            )
-        )
-
-        val buffer = ByteArray(16 * 1024)
-        var bytesRead: Int
-        var totalSent = 0L
-
         try {
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                remoteFile.write(totalSent, buffer, 0, bytesRead)
-                totalSent += bytesRead
-                onProgress(totalSent) // ✅ progress real
-            }
+            val fullPath = parentPath.trimEnd('/') + "/" + folderName
+            sftp.mkdir(fullPath)
+        } catch (e: Exception) {
+            Log.e("CREATE_FOLDER", "Failed to create folder", e)
         } finally {
-            remoteFile.close()
             sftp.close()
         }
     }
 
     // ----------------------------------------------------------------------
-    // SCP UPLOAD (WITH PROGRESS)
+    // READ FILE AS STRING
+    // ----------------------------------------------------------------------
+    fun readFile(path: String, context: Context): String {
+        val tempFile = File.createTempFile("ssh_read_", ".tmp", context.cacheDir)
+        downloadFile(path, tempFile)
+        return tempFile.readText(Charsets.UTF_8)
+    }
+
+    // ----------------------------------------------------------------------
+    // READ FILE AS BYTES
+    // ----------------------------------------------------------------------
+    fun readFileBytes(remotePath: String): ByteArray {
+        val output = ByteArrayOutputStream()
+        downloadInternal(remotePath, output)
+        return output.toByteArray()
+    }
+
+    // ----------------------------------------------------------------------
+    // SFTP UPLOAD WITH PROGRESS (BYTES)
+    // ----------------------------------------------------------------------
+    fun sftpPutWithProgress(
+        inputStream: InputStream,
+        remotePath: String,
+        onBytesSent: (sent: Long, total: Long) -> Unit
+    ) {
+        val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
+
+        ssh.newSFTPClient().use { sftp ->
+            sftp.open(
+                remotePath,
+                setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)
+            ).use { remoteFile ->
+
+                val buffer = ByteArray(16 * 1024)
+                var totalSent = 0L
+                val totalSize = try {
+                    inputStream.available().toLong()
+                } catch (_: Exception) {
+                    -1L
+                }
+
+                while (true) {
+                    val read = inputStream.read(buffer)
+                    if (read <= 0) break
+
+                    remoteFile.write(totalSent, buffer, 0, read)
+                    totalSent += read
+
+                    onBytesSent(totalSent, totalSize)
+                }
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // SCP UPLOAD
     // ----------------------------------------------------------------------
     fun uploadFile(localPath: String, remotePath: String, onProgress: (Float) -> Unit = {}) {
         val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
         val scp = ssh.newSCPFileTransfer()
         val file = File(localPath)
 
-        if (!file.exists()) throw IllegalArgumentException("Local file does not exist: $localPath")
+        if (!file.exists()) throw IllegalArgumentException("File not found: $localPath")
 
         onProgress(0f)
 
         scp.setTransferListener(object : TransferListener {
             override fun directory(name: String?) = this
-
-            override fun file(name: String?, size: Long) = StreamCopier.Listener { transferred ->
-                if (size > 0) {
-                    val progress = transferred.toFloat() / size.toFloat()
-                    onProgress(progress.coerceIn(0f, 1f))
+            override fun file(name: String?, size: Long) =
+                StreamCopier.Listener { transferred ->
+                    if (size > 0) {
+                        onProgress((transferred.toFloat() / size).coerceIn(0f, 1f))
+                    }
                 }
-            }
         })
 
         scp.upload(localPath, remotePath)
@@ -223,7 +291,7 @@ class Transport(private val connection: Connection) {
     }
 
     // ----------------------------------------------------------------------
-    // SCP DOWNLOAD (WITH PROGRESS)
+    // SCP DOWNLOAD
     // ----------------------------------------------------------------------
     fun downloadFile(remotePath: String, localPath: String, onProgress: (Float) -> Unit = {}) {
         val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
@@ -233,13 +301,12 @@ class Transport(private val connection: Connection) {
 
         scp.setTransferListener(object : TransferListener {
             override fun directory(name: String?) = this
-
-            override fun file(name: String?, size: Long) = StreamCopier.Listener { transferred ->
-                if (size > 0) {
-                    val progress = transferred.toFloat() / size.toFloat()
-                    onProgress(progress.coerceIn(0f, 1f))
+            override fun file(name: String?, size: Long) =
+                StreamCopier.Listener { transferred ->
+                    if (size > 0) {
+                        onProgress((transferred.toFloat() / size).coerceIn(0f, 1f))
+                    }
                 }
-            }
         })
 
         scp.download(remotePath, localPath)
@@ -247,70 +314,43 @@ class Transport(private val connection: Connection) {
     }
 
     // ----------------------------------------------------------------------
-    // REMOTE DIRECTORY LISTING
+    // DIRECTORY LIST
     // ----------------------------------------------------------------------
     fun listDirectory(path: String): List<RemoteFile> {
         val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
-        val sftp = ssh.newSFTPClient()
 
-        val list = sftp.ls(path)
-        sftp.close()
-
-        return list
-            .filter { it.name != "." && it.name != ".." }
-            .map { f ->
-                RemoteFile(
-                    name = f.name,
-                    size = f.attributes.size ?: 0L,
-                    isDirectory = f.attributes.type == net.schmizz.sshj.sftp.FileMode.Type.DIRECTORY
-                )
-            }
-    }
-
-    // ----------------------------------------------------------------------
-    // READ TEXT FILE
-    // ----------------------------------------------------------------------
-    fun readFile(path: String, context: Context): String {
-        val tempFile = File.createTempFile("ssh_read_", ".tmp", context.cacheDir)
-        downloadFile(path, tempFile.absolutePath)
-        return tempFile.readText(Charsets.UTF_8)
-    }
-
-    // ----------------------------------------------------------------------
-    // READ ANY FILE AS BYTES
-    // ----------------------------------------------------------------------
-    fun readFileBytes(remotePath: String): ByteArray {
-        val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
-        val sftp = ssh.newSFTPClient()
-        val file = sftp.open(remotePath)
-
-        return try {
-            val buffer = ByteArray(32 * 1024)
-            val output = ByteArrayOutputStream()
-            var offset = 0L
-
-            while (true) {
-                val read = file.read(offset, buffer, 0, buffer.size)
-                if (read <= 0) break
-                output.write(buffer, 0, read)
-                offset += read
-            }
-
-            output.toByteArray()
-        } finally {
-            file.close()
-            sftp.close()
+        ssh.newSFTPClient().use { sftp ->
+            return sftp.ls(path)
+                .filter { it.name != "." && it.name != ".." }
+                .map {
+                    RemoteFile(
+                        name = it.name,
+                        size = it.attributes.size ?: 0L,
+                        isDirectory = it.attributes.type ==
+                                net.schmizz.sshj.sftp.FileMode.Type.DIRECTORY
+                    )
+                }
         }
     }
 
     // ----------------------------------------------------------------------
-    // GET HOME DIRECTORY
+    // DELETE & MOVE
+    // ----------------------------------------------------------------------
+    fun deleteRemoteFile(path: String) {
+        val ssh = connection.getClient() ?: return
+        ssh.newSFTPClient().use { it.rm(path) }
+    }
+
+    fun moveRemoteFile(oldPath: String, newPath: String) {
+        val ssh = connection.getClient() ?: return
+        ssh.newSFTPClient().use { it.rename(oldPath, newPath) }
+    }
+
+    // ----------------------------------------------------------------------
+    // HOME DIRECTORY
     // ----------------------------------------------------------------------
     fun getHomeDirectory(): String {
         val ssh = connection.getClient() ?: throw IllegalStateException("Not Connected")
-        val sftp = ssh.newSFTPClient()
-        val home = sftp.canonicalize(".")
-        sftp.close()
-        return home
+        ssh.newSFTPClient().use { return it.canonicalize(".") }
     }
 }
