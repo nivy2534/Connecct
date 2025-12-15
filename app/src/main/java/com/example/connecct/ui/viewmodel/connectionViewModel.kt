@@ -136,6 +136,10 @@ class ConnectionViewModel : ViewModel() {
                 }
             }
 
+            is ConnectionUiEvent.CreateFolder -> {
+                createFolder(event.name)
+            }
+
             is ConnectionUiEvent.DismissMoveDialog -> {
                 _uiState.update {
                     it.copy(
@@ -700,10 +704,12 @@ class ConnectionViewModel : ViewModel() {
                 transport.sftpPutWithProgress(
                     inputStream = inputStream,
                     remotePath = remotePath
-                ) { sentBytes ->
-                    if (totalSize > 0) {
-                        val percent = ((sentBytes * 100) / totalSize).toInt()
-                        _uiState.update { it.copy(uploadProgress = percent.coerceIn(0, 100)) }
+                ) { sentBytes, totalBytes ->
+                    if (totalBytes > 0) {
+                        val percent = ((sentBytes * 100) / totalBytes).toInt()
+                        _uiState.update {
+                            it.copy(uploadProgress = percent.coerceIn(0, 100))
+                        }
                     }
                 }
 
@@ -730,83 +736,29 @@ class ConnectionViewModel : ViewModel() {
         }
     }
 
-    fun downloadFile(file: RemoteFile, context: Context) {
-        if (!connection.isConnected()) return
-
-        val basePath = _uiState.value.currentPath
-        val remotePath =
-            if (basePath == "/") "/${file.name}"
-            else "${basePath.trimEnd('/')}/${file.name}"
-
-        val downloadDir = File(
-            context.getExternalFilesDir(null),
-            "downloads"
-        )
-        if (!downloadDir.exists()) downloadDir.mkdirs()
-
-        val localFile = File(downloadDir, file.name)
-
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                // 🔥 AUTO SWITCH
-                if (file.size <= 5 * 1024 * 1024) {
-                    // SMALL FILE
-                    val bytes = transport.readFileBytes(remotePath)
-                    localFile.writeBytes(bytes)
-
-                } else {
-                    // LARGE FILE
-                    _uiState.update { it.copy(isDownloading = true, downloadProgress = 0) }
-
-                    transport.downloadFile(remotePath, localFile) { percent ->
-                        _uiState.update {
-                            it.copy(downloadProgress = percent.toInt())
-                        }
-                    }
-
-                    _uiState.update { it.copy(isDownloading = false) }
-                }
-
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        "Downloaded: ${localFile.absolutePath}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isDownloading = false) }
-
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        "Download failed: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
-    }
-
     fun downloadFilePublic(
         file: RemoteFile,
         context: Context
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                _uiState.update {
+                    it.copy(
+                        isDownloading = true,
+                        downloadProgress = 0,
+                        downloadingFileName = file.name
+                    )
+                }
+
                 val resolver = context.contentResolver
 
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
                     put(MediaStore.MediaColumns.MIME_TYPE, getMimeType(file.name))
-
-                    // 🔥 ini kunci agar masuk folder Download
                     put(
                         MediaStore.MediaColumns.RELATIVE_PATH,
                         Environment.DIRECTORY_DOWNLOADS
                     )
-
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
 
@@ -816,15 +768,36 @@ class ConnectionViewModel : ViewModel() {
                 ) ?: throw IllegalStateException("Failed to create MediaStore entry")
 
                 resolver.openOutputStream(uri)?.use { output ->
+
+                    val remotePath =
+                        _uiState.value.currentPath.trimEnd('/') + "/" + file.name
+
+                    val totalSize = file.size.takeIf { it > 0 } ?: -1L
+
                     transport.downloadFileToStream(
-                        remotePath = "${_uiState.value.currentPath}/${file.name}",
+                        remotePath = remotePath,
                         outputStream = output
-                    )
+                    ) { downloaded: Long, total: Long ->
+                        if (total > 0) {
+                            val percent = ((downloaded * 100) / total).toInt()
+                            _uiState.update {
+                                it.copy(downloadProgress = percent.coerceIn(0, 100))
+                            }
+                        }
+                    }
                 }
 
                 values.clear()
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 resolver.update(uri, values, null, null)
+
+                _uiState.update {
+                    it.copy(
+                        isDownloading = false,
+                        downloadProgress = 100,
+                        downloadingFileName = null
+                    )
+                }
 
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
@@ -835,13 +808,31 @@ class ConnectionViewModel : ViewModel() {
                 }
 
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        "Download failed: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
+                _uiState.update {
+                    it.copy(
+                        isDownloading = false,
+                        downloadingFileName = null,
+                        errorMessage = "Download failed: ${e.message}"
+                    )
                 }
+            }
+        }
+    }
+
+    private fun createFolder(folderName: String) {
+        viewModelScope.launch {
+            try {
+                transport.createRemoteDirectory(
+                    uiState.value.currentPath,
+                    folderName
+                )
+
+                withContext(Dispatchers.Main) {
+                    onEvent(ConnectionUiEvent.LoadDirectory)
+                }
+
+            } catch (e: Exception) {
+                Log.e("CREATE_FOLDER", "Failed", e)
             }
         }
     }

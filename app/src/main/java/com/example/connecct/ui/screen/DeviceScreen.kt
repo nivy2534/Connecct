@@ -48,7 +48,11 @@ fun DeviceScreen(
         ) {
             shouldRedirectAfterConnect = false   // biar cuma sekali
             navController.navigate("connect_beta") {
+                popUpTo("devices") {
+                    saveState = true
+                }
                 launchSingleTop = true
+                restoreState = true
             }
         }
 

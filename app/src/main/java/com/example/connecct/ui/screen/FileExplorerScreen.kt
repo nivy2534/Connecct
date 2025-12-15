@@ -28,7 +28,9 @@ import com.example.connecct.ui.state.OpenedFile
 import com.example.connecct.ui.state.RemoteFile
 import com.example.connecct.ui.viewmodel.ConnectionViewModel
 import androidx.compose.material.icons.filled.ArrowBack
-
+import androidx.compose.material.icons.filled.Cable
+import com.example.connecct.ui.util.formatFileSize
+import com.example.connecct.ui.util.formatPath
 
 @Composable
 fun FileExplorerScreen(viewModel: ConnectionViewModel) {
@@ -40,6 +42,13 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
     var showMoveDialog by remember { mutableStateOf(false) }
     var moveTargetFile by remember { mutableStateOf<RemoteFile?>(null) }
     var selectedTargetDir by remember { mutableStateOf<FolderNode?>(null) }
+
+    // ================= CREATE FOLDER =================
+    var showCreateFolderDialog by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+
+    // ================= PLUS MENU =================
+    var showPlusMenu by remember { mutableStateOf(false) }
 
     // ================= TREE ROOT =================
     var folderTree by remember {
@@ -65,7 +74,7 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
         if (uri != null) viewModel.uploadFile(uri, context)
     }
 
-    // ================= SORTED FILES (🔥 INI INTINYA) =================
+    // ================= SORTED FILES =================
     val sortedFiles = remember(state.remoteFiles) {
         state.remoteFiles.sortedWith(
             compareBy<RemoteFile>(
@@ -86,43 +95,96 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
         val rootPaths = listOf("/", "C:/", "E:/")
         val showBackButton = state.currentPath !in rootPaths
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
 
-            if (showBackButton) {
-                IconButton(
-                    onClick = {
-                        viewModel.onEvent(ConnectionUiEvent.NavigateUp)
+            // ================= LEFT ZONE =================
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.align(Alignment.CenterStart)
+            ) {
+
+                if (showBackButton) {
+                    IconButton(
+                        onClick = {
+                            viewModel.onEvent(ConnectionUiEvent.NavigateUp)
+                        },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Navigate up"
+                        )
                     }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Navigate up"
-                    )
                 }
 
-                Spacer(Modifier.width(12.dp))
+                Icon(
+                    imageVector = Icons.Default.Cable,
+                    contentDescription = "Connected",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .padding(start = 2.dp)
+                )
             }
+
+            // ================= CENTER PATH =================
+            val shortPath = formatPath(state.currentPath)
 
             Text(
-                text = "Path: ${state.currentPath}",
-                modifier = Modifier.weight(1f),
-                maxLines = 1
+                text = "Path: $shortPath",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
             )
 
-            IconButton(
-                onClick = {
-                    viewModel.onEvent(ConnectionUiEvent.LoadDirectory)
-                }
+            // ================= RIGHT ZONE =================
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.align(Alignment.CenterEnd)
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-            }
 
-            IconButton(
-                onClick = { launcher.launch("*/*") }
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Upload")
+                IconButton(
+                    onClick = {
+                        viewModel.onEvent(ConnectionUiEvent.LoadDirectory)
+                    }
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                }
+
+                Box {
+                    IconButton(
+                        onClick = { showPlusMenu = true }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "More actions")
+                    }
+
+                    DropdownMenu(
+                        expanded = showPlusMenu,
+                        onDismissRequest = { showPlusMenu = false }
+                    ) {
+
+                        // Upload file
+                        DropdownMenuItem(
+                            text = { Text("Upload File") },
+                            onClick = {
+                                showPlusMenu = false
+                                launcher.launch("*/*")
+                            }
+                        )
+
+                        // Create folder
+                        DropdownMenuItem(
+                            text = { Text("Create Folder") },
+                            onClick = {
+                                showPlusMenu = false
+                                newFolderName = ""
+                                showCreateFolderDialog = true
+                            }
+                        )
+                    }
+                }
             }
         }
 
@@ -297,6 +359,71 @@ fun FileExplorerScreen(viewModel: ConnectionViewModel) {
             }
         )
     }
+
+    // ================= DOWNLOAD PROGRESS =================
+    if (state.isDownloading) {
+        AlertDialog(
+            onDismissRequest = {},
+            confirmButton = {},
+            title = { Text("Downloading...") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+
+                    Text(state.downloadingFileName ?: "")
+
+                    Spacer(Modifier.height(8.dp))
+
+                    LinearProgressIndicator(
+                        progress = state.downloadProgress / 100f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text("${state.downloadProgress}%")
+                }
+            }
+        )
+    }
+
+    // ================= CREATE FOLDER DIALOG =================
+    if (showCreateFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreateFolderDialog = false },
+            title = { Text("Create Folder") },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    label = { Text("Folder name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = newFolderName.isNotBlank(),
+                    onClick = {
+                        viewModel.onEvent(
+                            ConnectionUiEvent.CreateFolder(newFolderName)
+                        )
+                        showCreateFolderDialog = false
+                    }
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showCreateFolderDialog = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 fun updateFolderTree(
@@ -337,23 +464,29 @@ fun RemoteFileItem(
     var showRenameDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf(file.name) }
 
-    // ================= ROW UTAMA =================
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clickable { onClick() },
-        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
 
+        // 📁 / 📄 + nama file
         Text(
             text = if (file.isDirectory) "📁 ${file.name}" else "📄 ${file.name}",
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            maxLines = 1
         )
 
+        // 📦 ukuran file (hanya untuk file)
         if (!file.isDirectory) {
-            Text("${file.size} bytes", modifier = Modifier.padding(end = 8.dp))
+            Text(
+                text = formatFileSize(file.size),
+                modifier = Modifier.padding(end = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Box {
@@ -394,7 +527,7 @@ fun RemoteFileItem(
                     text = { Text("Rename") },
                     onClick = {
                         expanded = false
-                        newName = file.name   // 🔥 reset setiap buka dialog
+                        newName = file.name
                         showRenameDialog = true
                     }
                 )
