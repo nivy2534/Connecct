@@ -19,3 +19,20 @@ fun formatPath(
 
     return ".../" + tail.joinToString("/")
 }
+
+fun pathShortener(path: String):String{
+    val clean = path.trimEnd('/')
+
+    if(clean.isEmpty() || clean == "/") return "/"
+
+    val parts = clean.split("/").filter{it.isNotBlank()}
+
+    val hasDrive = parts.firstOrNull()?.endsWith(":") == true
+
+    return when{
+        parts.size <= 2 -> clean
+        hasDrive -> parts.first() + "/../" + parts.takeLast(1).joinToString("/")
+        else -> "../" + parts.takeLast(1).joinToString("/")
+    }
+
+}

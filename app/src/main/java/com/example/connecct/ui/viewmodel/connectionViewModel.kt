@@ -45,6 +45,9 @@ import java.util.concurrent.TransferQueue
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 
+private const val TAG_QUEUE = "TRANSFER_QUEUE"
+private const val TAG_UPLOAD = "TRANSFER_UPLOAD"
+private const val TAG_DOWNLOAD = "TRANSFER_DOWNLOAD"
 
 class ConnectionViewModel : ViewModel() {
 
@@ -78,6 +81,23 @@ class ConnectionViewModel : ViewModel() {
             is ConnectionUiEvent.OnPrivateKeySelected -> selectKey(event.path, event.filename)
             is ConnectionUiEvent.OpenFile -> openFile(event.fileName, event.context)
             is ConnectionUiEvent.UploadFile -> uploadFile(event.uri, event.context)
+            is ConnectionUiEvent.OpenTransferQueue -> {
+                _uiState.update {
+                    it.copy(showTransferQueue = true)
+                }
+            }
+
+            ConnectionUiEvent.CloseTransferQueue -> {
+                _uiState.update {
+                    it.copy(showTransferQueue = false)
+                }
+            }
+
+            ConnectionUiEvent.CloseTransferQueue -> {
+                _uiState.update {
+                    it.copy(showTransferQueue = false)
+                }
+            }
 
             is ConnectionUiEvent.DeleteFile -> {
                 val path =
@@ -884,17 +904,40 @@ class ConnectionViewModel : ViewModel() {
         }
     }
 
-    fun enqueue(task: TransferTask){
+    fun enqueue(task: TransferTask, context: Context) {
+        if (appContext == null) {
+            appContext = context.applicationContext
+        }
+
+        Log.d(
+            TAG_QUEUE,
+            "ENQUEUE | id=${task.id} type=${task.type} file=${task.fileName}"
+        )
+
         _transferQueue.update { it + task }
         processQueue()
     }
 
+
     private fun processQueue(){
-        if (isProcessingQueue) return
+        if (isProcessingQueue){
+            Log.d(TAG_QUEUE, "processQueue skipped (already processing)")
+            return
+        }
 
         val next = _transferQueue.value.firstOrNull(){
             it.status == TransferStatus.QUEUED
-        } ?: return
+        }
+
+        if (next == null) {
+            Log.d(TAG_QUEUE, "Queue empty or no QUEUED task")
+            return
+        }
+
+        Log.d(
+            TAG_QUEUE,
+            "START TASK | id=${next.id} type=${next.type} file=${next.fileName}"
+        )
 
         isProcessingQueue = true
 
@@ -905,7 +948,7 @@ class ConnectionViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             try{
                 when(next.type){
-                    TransferType.UPLOAD -> runUpload(next, appContext)
+                    TransferType.UPLOAD -> runUpload(next)
                     TransferType.DOWNLOAD -> runDownload(next)
                 }
 
@@ -931,40 +974,57 @@ class ConnectionViewModel : ViewModel() {
                 }
     }
 
-    private suspend fun runUpload(task: TransferTask, context: Context? = null){
+    private suspend fun runUpload(task: TransferTask) {
         val uri = task.localUri ?: error("Upload task missing uri")
-
         val ctx = appContext ?: error("App context not initialized")
 
-        val input = ctx.contentResolver.openInputStream(uri) ?: error("Failed to open input stream")
+        val input = ctx.contentResolver.openInputStream(uri)
+            ?: error("Failed to open input stream")
+
+        val base = _uiState.value.currentPath.trimEnd('/')
+        val remotePath = task.remotePath ?: run {
+            if (base.isEmpty()) "/${task.fileName}"
+            else "$base/${task.fileName}"
+        }
 
         transport.sftpPutWithProgress(
             inputStream = input,
-            remotePath = task.remotePath
-        ){sent ->
-            updateTask(task.id){
-                it.copy(progress = sent)
+            remotePath = remotePath
+        ) { sentBytes, totalBytes ->
+            val progress =
+                if (totalBytes > 0) (sentBytes * 100 / totalBytes) else sentBytes
+
+            updateTask(task.id) {
+                it.copy(progress = progress)
             }
         }
 
         input.close()
     }
 
-    private suspend fun runDownload(task: TransferTask){
+
+    private suspend fun runDownload(task: TransferTask) {
         val ctx = appContext ?: error("App context not initialized")
         val resolver = ctx.contentResolver
 
-        resolver.openOutputStream(Uri.parse(task.remotePath))?.use {output ->
+        val remotePath = task.remotePath ?: error("Download task missing remotePath")
+        val outputUri = task.localUri ?: error("Download task missing localUri")
+
+        resolver.openOutputStream(outputUri)?.use { output ->
             transport.downloadFileToStream(
-                remotePath = task.remotePath,
+                remotePath = remotePath,
                 outputStream = output
-            ){percet ->
-                updateTask(task.id){
-                    it.copy(progress = percet)
+            ) { receivedBytes, totalBytes ->
+                val progress =
+                    if (totalBytes > 0) (receivedBytes * 100 / totalBytes) else receivedBytes
+
+                updateTask(task.id) {
+                    it.copy(progress = progress)
                 }
             }
         } ?: error("Failed to open output stream")
     }
+
 
     fun disconnect(){
         viewModelScope.launch(Dispatchers.IO){

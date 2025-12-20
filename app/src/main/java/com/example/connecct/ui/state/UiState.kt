@@ -37,7 +37,10 @@ data class UiState(
     // Download File
     val isDownloading: Boolean = false,
     val downloadProgress: Int = 0,
-    val downloadingFileName: String? = null
+    val downloadingFileName: String? = null,
+
+    //queue screen
+    val showTransferQueue: Boolean = false
 )
 
 enum class ConnectionStatus {
@@ -70,6 +73,8 @@ sealed class ConnectionUiEvent {
     data class UploadStarted(val fileName: String) : ConnectionUiEvent()
 
     object OnConnectClicked : ConnectionUiEvent()
+    object OpenTransferQueue : ConnectionUiEvent()
+    object CloseTransferQueue : ConnectionUiEvent()
     object OnResetClicked : ConnectionUiEvent()
     object OnChooseKeyClicked : ConnectionUiEvent()
     object CloseFile : ConnectionUiEvent()
