@@ -829,19 +829,34 @@ class ConnectionViewModel : ViewModel() {
     }
 
     private fun createFolder(folderName: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
+
+            Log.d("CREATE_FOLDER", "currentPath=${uiState.value.currentPath}")
+
             try {
-                transport.createRemoteDirectory(
-                    uiState.value.currentPath,
-                    folderName
-                )
+                val base = uiState.value.currentPath.trimEnd('/')
+
+                val fullPath =
+                    if (base.isEmpty() || base == "/")
+                        "/$folderName"
+                    else
+                        "$base/$folderName"
+
+                Log.d("CREATE_FOLDER", "Creating folder at: $fullPath")
+
+                transport.createRemoteDirectory(fullPath)
 
                 withContext(Dispatchers.Main) {
-                    onEvent(ConnectionUiEvent.LoadDirectory)
+                    loadDirectory()
                 }
 
             } catch (e: Exception) {
-                Log.e("CREATE_FOLDER", "Failed", e)
+                Log.e("CREATE_FOLDER", "Failed to create folder", e)
+                withContext(Dispatchers.Main) {
+                    _uiState.update {
+                        it.copy(errorMessage = "Create folder failed: ${e.message}")
+                    }
+                }
             }
         }
     }

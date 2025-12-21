@@ -189,23 +189,13 @@ class Transport(private val connection: Connection) {
         }
     }
 
-    fun createRemoteDirectory(parentPath: String, folderName: String) {
+    fun createRemoteDirectory(fullPath: String) {
         val ssh = connection.getClient()
+            ?: throw IllegalStateException("Not Connected")
 
-        if (ssh == null || !ssh.isConnected) {
-            Log.e("CREATE_FOLDER", "SSH not connected, abort create folder")
-            return
-        }
-
-        val sftp = ssh.newSFTPClient()
-
-        try {
-            val fullPath = parentPath.trimEnd('/') + "/" + folderName
+        ssh.newSFTPClient().use { sftp ->
+            Log.d("CREATE_FOLDER", "mkdir: $fullPath")
             sftp.mkdir(fullPath)
-        } catch (e: Exception) {
-            Log.e("CREATE_FOLDER", "Failed to create folder", e)
-        } finally {
-            sftp.close()
         }
     }
 
